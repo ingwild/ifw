@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.15
+# rc.firewall-0.16
 #
 # (c) 2003 by ingwar
 # Distributed under the terms of GNU GPLv2
@@ -81,7 +81,6 @@ firewall_start() {
 
   CH='DENY'
   $IPTABLES -N $CH
-  $IPTABLES -A $CH -j LOG
   $IPTABLES -A $CH -p tcp -j REJECT --reject-with tcp-reset
   $IPTABLES -A $CH -p udp -j REJECT --reject-with icmp-port-unreachable
   $IPTABLES -A $CH -j DROP
@@ -93,6 +92,7 @@ firewall_start() {
   CH='BLACKLIST'
   $IPTABLES -N $CH
   for CIDR in `cat $BLACKLIST` ; do
+    $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
     $IPTABLES -A $CH -s $CIDR -j DENY
   done
 
@@ -120,9 +120,11 @@ firewall_start() {
     $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
+  $IPTABLES -A $CH -j LOG --log-prefix "$CH: "
   $IPTABLES -A $CH -j DENY
 
   CH='OUTPUT'
@@ -138,43 +140,59 @@ firewall_start() {
     $IPTABLES -A "$CH"_"$IF" -j ACCEPT
     $IPTABLES -A $CH -o $IF -j "$CH"_"$IF"
   done
+  $IPTABLES -A $CH -j LOG --log-prefix "$CH: "
   $IPTABLES -A $CH -j DENY
+
+  CH='NOFW'
+  $IPTABLES -N $CH
+  for CIDR in `cat $NOFW_HARD` ; do
+    $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -s $CIDR -j DENY
+    $IPTABLES -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -d $CIDR -j DENY
+  done
+  for CIDR in `cat $NOFW_SOFT` ; do
+    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j DENY
+    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j DENY
+    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j DENY
+    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j DENY
+  done
 
   CH='FORWARD'
   $IPTABLES -A $CH -j CHECK
   $IPTABLES -A $CH -j BLACKLIST
   for IF in ${IF_INT[@]} ; do
     $IPTABLES -N "$CH"_"$IF"
-    $IPTABLES -A "$CH"_"$IF" -j ULOG_OUT
+    $IPTABLES -A "$CH"_"$IF" -j NOFW
+    for IF_O in ${IF_EXT[@]} ; do
+      $IPTABLES -A "$CH"_"$IF" -o $IF_O -j ULOG_OUT
+    done
     $IPTABLES -A "$CH"_"$IF" -j ACCEPT
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
   for IF in ${IF_EXT[@]} ; do
     $IPTABLES -N "$CH"_"$IF"
     $IPTABLES -A "$CH"_"$IF" -j ULOG_IN
-    for CIDR in `cat $NOFW_HARD` ; do
-      $IPTABLES -A $CH -s $CIDR -j DENY
-      $IPTABLES -A $CH -d $CIDR -j DENY
-    done
-    for CIDR in `cat $NOFW_SOFT` ; do
-      $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j DENY
-      $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j DENY
-      $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j DENY
-      $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j DENY
-    done
+    $IPTABLES -A "$CH"_"$IF" -j NOFW
     $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
+  $IPTABLES -A $CH -j LOG --log-prefix "$CH: "
   $IPTABLES -A $CH -j DENY
 
   CH='POSTROUTING'
   for IF in ${IF_EXT[@]}; do
-    $IPTABLES -t nat -A $CH -o $IF -j MASQUERADE
+    echo $IPTABLES -t nat -A $CH -o $IF -j MASQUERADE
   done
 
 }
