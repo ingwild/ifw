@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.28
+# rc.firewall-0.29
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -9,6 +9,7 @@
 
 FW="/etc/firewall"
 INTERFACES="$FW/if"
+TARPIT="$FW/tarpit"
 BLACKLIST="$FW/blacklist"
 HARDLIST="$FW/hardlist"
 SOFTLIST="$FW/softlist"
@@ -146,6 +147,18 @@ firewall_start() {
   [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
   $IPT -A $CH1 -j DROP
 
+  # tarpit: catch connections from these hosts
+  if [ -r $TARPIT ]; then
+    CH1='CATCH'
+    $IPT -N $CH1
+    for CIDR in `cat $TARPIT`; do
+      if [ -n $CIDR ]; then
+        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -p tcp -j LOG --log-prefix "$CH1: "
+        $IPT -A $CH1 -s $CIDR -p tcp -j TARPIT
+      fi
+    done
+  fi
+
   # blacklist: hosts, not allowed to connect or forward
   if [ -r $BLACKLIST ]; then
     CH1='BLACKLIST'
@@ -234,6 +247,9 @@ firewall_start() {
 
   # sanity check first
   $IPT -A $CH1 -j CHECK
+
+  # catch connections from theses hosts
+  [[ -r $TARPIT ]] && $IPT -A $CH1 -j CATCH
 
   # deny pockects from blacklisted hosts
   [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
