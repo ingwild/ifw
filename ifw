@@ -1,28 +1,35 @@
 #!/bin/bash
 #
-# rc.firewall-0.17
+# rc.firewall-0.18
 # Linux/Netfilter firewall script.
 #
 # (c) 2003 by ingwar
 # Distributed under the terms of GNU GPLv2 or later versions.
 #
-# Files in /etc/firewall:
-# 
-# if_ext	external interfaces
-# if_int	internal interfaces
-# if_masq	masqueraded interfaces
-# blacklist	blacklisted hosts
-# nofw_hard	noforwarded hosts
-# nofw_soft	partially noforwarded hosts
-# tcp_ok	open TCP ports
-# udp_ok	open UDP ports
-# tcp_fw	TCP ports, allowed to forward in
-# udp_fw	UDP ports, allowed to forward in
-# tcp_nofw	TCP ports list for nofw_soft
-# udp_nofw	UDP ports list for nofw_soft
+# Config files:
+#
+# /etc/firewall
+# |
+# |-if_ext	external interfaces
+# | | tcp_ok	open TCP ports
+# | | udp_ok	open UDP ports
+# | | tcp_fw	TCP ports, allowed to forward in
+# | | udp_fw	UDP ports, allowed to forward in
+# |
+# |-if_int	internal interfaces
+# |
+# |-if_masq	masqueraded interfaces
+# |
+# |-blacklist	blacklisted hosts
+# |
+# |-nofw_hard	noforwarded hosts
+# |
+# |-nofw_soft	partially noforwarded hosts
+# | | tcp_nofw	TCP ports list for nofw_soft
+# | | udp_nofw	UDP ports list for nofw_soft
 #
  
-IPTABLES="iptables"
+IPTABLES="echo iptables"
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
 
@@ -45,6 +52,7 @@ ERRMSG2="Empty config file"
 
 mp() {
 
+  MP=
   if [ -r $F ]; then
     i=1
     for P in `cat $F`; do
@@ -54,13 +62,6 @@ mp() {
         MP="$MP,$P"
       fi
     done
-  else
-    echo "$ERRMSG1: $F"
-    exit 1
-  fi
-  if [ -z $MP ]; then
-    echo "$ERRMSG2: $F"
-    exit 1
   fi
 
 }
@@ -72,7 +73,6 @@ firewall_start() {
     for IF in `cat $F_IF_EXT`; do
       if [ -n $IF ]; then
         IF_EXT[$i]="$IF"
-        echo if_ext: $IF
         i=$i+1
       fi
     done
@@ -90,7 +90,6 @@ firewall_start() {
     for IF in `cat $F_IF_INT`; do
       if [ -n $IF ]; then
         IF_INT[$i]="$IF"
-        echo if_int: $IF
         i=$i+1
       fi
     done
@@ -119,10 +118,14 @@ firewall_start() {
 
   CH='BLACKLIST'
   $IPTABLES -N $CH
-  for CIDR in `cat $BLACKLIST`; do
-    $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -j DENY
-  done
+  if [ -r $BLACKLIST ]; then
+    for CIDR in `cat $BLACKLIST`; do
+      if [ ${#CIDR} != 0 ]; then
+        $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -s $CIDR -j DENY
+      fi
+    done
+  fi
 
   CH='ULOG_IN'
   $IPTABLES -N $CH
@@ -130,7 +133,7 @@ firewall_start() {
   
   CH='ULOG_OUT'
   $IPTABLES -N $CH
-  $IPTABLES -A $CH -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
+  $IPTABLES -A $CH -j ULOG --ulog-NLGROUP 20 --ulog-cprange 20 --ulog-qthreshold 20
 
   CH='INPUT'
   $IPTABLES -A $CH -j CHECK
@@ -146,9 +149,13 @@ firewall_start() {
     $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
     F=$F_TCP_OK mp
-    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    if [ ${#MP} != 0 ]; then
+      $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    fi
     F=$F_UDP_OK mp
-    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
+    if [ ${#MP} != 0 ]; then
+      $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
+    fi
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
@@ -175,24 +182,34 @@ firewall_start() {
 
   CH='NOFW'
   $IPTABLES -N $CH
-  for CIDR in `cat $NOFW_HARD`; do
-    $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -j DENY
-    $IPTABLES -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -d $CIDR -j DENY
-  done
-  for CIDR in `cat $NOFW_SOFT`; do
-    F=$F_TCP_NOFW mp
-    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j DENY
-    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j DENY
-    F=$F_TCP_NOFW mp
-    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j DENY
-    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j DENY
-  done
+  if [ -r $NOFW_HARD ]; then
+    for CIDR in `cat $NOFW_HARD`; do
+      if [ ${#CIDR} != 0 ]; then
+        $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -s $CIDR -j DENY
+        $IPTABLES -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -d $CIDR -j DENY
+      fi
+    done
+  fi
+  if [ -r $NOFW_SOFT ]; then
+    for CIDR in `cat $NOFW_SOFT`; do
+      F=$F_TCP_NOFW mp
+      if [ ${#MP} != 0 ]; then
+        $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j DENY
+        $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j DENY
+      fi
+      F=$F_TCP_NOFW mp
+      if [ ${#MP} != 0 ]; then
+        $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j DENY
+        $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
+        $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j DENY
+      fi
+    done
+  fi
 
   CH='FORWARD'
   $IPTABLES -A $CH -j CHECK
@@ -213,9 +230,13 @@ firewall_start() {
     $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
     F=$F_TCP_FW mp
-    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    if [ ${#MP} != 0 ]; then
+      $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    fi
     F=$F_UDP_FW mp
-    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
+    if [ ${#MP} != 0 ]; then
+      $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
+    fi
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
