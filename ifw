@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.22
+# rc.firewall-0.23
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -30,6 +30,7 @@ F_TCP_FW="$FW/tcp_fw"
 F_UDP_FW="$FW/udp_fw"
 F_TCP_NOFW="$FW/tcp_nofw"
 F_UDP_NOFW="$FW/udp_nofw"
+DNAT="$FW/dnat"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
 
@@ -303,8 +304,28 @@ firewall_start() {
   $IPT -A $CH -j LOG --log-prefix "$CH: "
   $IPT -A $CH -j DENY
 
-  CH='POSTROUTING'
+  if [ -r $DNAT ]; then
+    CH='PREROUTING'
+    for IF in ${IF_EXT[@]}; do
+      flag=0
+      for str in `cat $DNAT`; do
+        if [ $flag == 0 ]; then
+          PORT=`expr "$str" : '\(.*\)\/'`
+          PROTO=`expr "$str" : '.*\/\(.*\)'`
+          flag=1
+        else
+          DST=$str
+          if [ -n "$PORT" ] && [ -n "$PROTO" ] && [ -n "$DST" ]; then
+            $IPT -t nat -A $CH -i $IF -p $PROTO --dport $PORT -j DNAT --to $DST
+          fi
+          flag=0
+        fi
+      done
+    done
+  fi
+
   if [ -r $F_IF_MASQ ]; then
+    CH='POSTROUTING'
     for IF in `cat $F_IF_MASQ`; do
       if [ -n "$IF" ]; then
         $IPT -t nat -A $CH -o $IF -j MASQUERADE
