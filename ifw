@@ -1,63 +1,18 @@
 #!/bin/bash
 #
-# rc.firewall-0.21
+# rc.firewall-0.22
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
 # Distributed under the terms of GNU GPLv2 or later versions.
 #
-# Config files:
-#
-# /etc/firewall
-# |
-# |-if_ext	external interfaces
-# |  -tcp_ok	open TCP ports
-# |  -udp_ok	open UDP ports
-# |  -tcp_fw	TCP ports, allowed to forward in
-# |  -udp_fw	UDP ports, allowed to forward in
-# |
-# |-if_int	internal interfaces
-# |
-# |-if_masq	masqueraded interfaces
-# |
-# |-blacklist	blacklisted hosts
-# |
-# |-nofw_hard	noforwarded hosts
-# |
-# |-nofw_soft	partially noforwarded hosts
-# |  -tcp_nofw	TCP ports list for nofw_soft
-# |  -udp_nofw	UDP ports list for nofw_soft
-# |
-# |-ulog        flag file, if present - ULOG works
-# |  -noulog    don't ULOG these hosts
-#
-# Release history:
-#
-# 0.21  Implemented comditional ULOGging.
-#       Added config file noulog.
-#
-# 0.20: "Release history" added.
-#       ULOGging made conditional. Added "ulog" flag file.
-#       Optimized chains for loopback interface.
-#       Prevented BLACKLIST and NOFW_HARD chains from creating,
-#       if respective config files does not exist.
-#
-# 0.19: Embeded NOFW_SOFT into FORWARD chain.
-#       Simplified NOFW_SOFT rules. Tested and verified ULOG accuracy.
-#
-# 0.18: Optimisations and cleanups. Some condition checking
-#       to simplify configuring.
-#
-# 0.17: Removed redundant code and implemented mp() function
-#       for config file parsing. Documented config files.
-#       Shortened variables names.
-#
-# 0.16: Full logging, fixed some --log--prefix bugs.
-#
-# 0.15: Initial version. Clean and simple.
-#
 
-IPT="echo iptables"
+if [ "$2" == "debug" ]; then
+  IPT="echo iptables"
+else
+  IPT="iptables"
+fi
+
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
 
@@ -68,6 +23,7 @@ F_IF_MASQ="$FW/if_masq"
 BLACKLIST="$FW/blacklist"
 NOFW_HARD="$FW/nofw_hard"
 NOFW_SOFT="$FW/nofw_soft"
+ETHER="$FW/ethers"
 F_TCP_OK="$FW/tcp_ok"
 F_UDP_OK="$FW/udp_ok"
 F_TCP_FW="$FW/tcp_fw"
@@ -101,7 +57,7 @@ firewall_start() {
   if [ -r $F_IF_EXT ]; then
     i=1
     for IF in `cat $F_IF_EXT`; do
-      if [ -n $IF ]; then
+      if [ -n "$IF" ]; then
         IF_EXT[$i]="$IF"
         i=$i+1
       fi
@@ -118,7 +74,7 @@ firewall_start() {
   if [ -r $F_IF_INT ]; then
     i=1
     for IF in `cat $F_IF_INT`; do
-      if [ -n $IF ]; then
+      if [ -n "$IF" ]; then
         IF_INT[$i]="$IF"
         i=$i+1
       fi
@@ -150,14 +106,45 @@ firewall_start() {
   if [ -r $BLACKLIST ]; then
     CH='BLACKLIST'
     $IPT -N $CH
-    if [ -r $BLACKLIST ]; then
-      for CIDR in `cat $BLACKLIST`; do
-        if [ ${#CIDR} != 0 ]; then
-          $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-          $IPT -A $CH -s $CIDR -j DENY
+    for CIDR in `cat $BLACKLIST`; do
+      if [ -n "$CIDR" ]; then
+        $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
+        $IPT -A $CH -s $CIDR -j DENY
+      fi
+    done
+  fi
+
+  if [ -r $NOFW_HARD ]; then
+    CH='NOFW_HARD'
+    $IPT -N $CH
+    for CIDR in `cat $NOFW_HARD`; do
+      if [ -n "$CIDR" ]; then
+        $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
+        $IPT -A $CH -s $CIDR -j DENY
+        $IPT -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
+        $IPT -A $CH -d $CIDR -j DENY
+      fi
+    done
+  fi
+
+  if [ -r $ETHER ]; then
+    CH='ETHER'
+    $IPT -N $CH
+    flag=0
+    for ADDR in `cat $ETHER`; do
+      if [ $flag == 0 ]; then
+        MAC=$ADDR
+        flag=1
+      else
+        IP=$ADDR
+        if [ -n "$MAC" ] && [ -n "$IP" ]; then
+          $IPT -A $CH -m mac --mac-source $MAC -s $IP -j RETURN
         fi
-      done
-    fi
+        flag=0
+      fi
+    done
+    $IPT -A $CH -j LOG --log-prefix "$CH: "
+    $IPT -A $CH -j DENY
   fi
 
   if [ -r $ULOG ]; then
@@ -165,7 +152,7 @@ firewall_start() {
     $IPT -N $CH
     if [ -r $NOULOG ]; then
       for CIDR in `cat $NOULOG`; do
-        if [ ${#CIDR} != 0 ]; then
+        if [ -n "$CIDR" ]; then
           $IPT -A $CH -s $CIDR -j RETURN
         fi
       done
@@ -175,7 +162,7 @@ firewall_start() {
     $IPT -N $CH
     if [ -r $NOULOG ]; then
       for CIDR in `cat $NOULOG`; do
-        if [ ${#CIDR} != 0 ]; then
+        if [ -n "$CIDR" ]; then
           $IPT -A $CH -d $CIDR -j RETURN
         fi
       done
@@ -191,6 +178,9 @@ firewall_start() {
   fi
   for IF in ${IF_INT[@]}; do
     $IPT -N "$CH"_"$IF"
+    if [ -r $ETHER ]; then
+      $IPT -A "$CH"_"$IF" -j ETHER
+    fi
     $IPT -A "$CH"_"$IF" -j ACCEPT
     $IPT -A $CH -i $IF -j "$CH"_"$IF"
   done
@@ -202,11 +192,11 @@ firewall_start() {
     $IPT -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPT -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
     F=$F_TCP_OK mp
-    if [ ${#MP} != 0 ]; then
+    if [ -n "$MP" ]; then
       $IPT -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
     fi
     F=$F_UDP_OK mp
-    if [ ${#MP} != 0 ]; then
+    if [ -n "$MP" ]; then
       $IPT -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
     fi
     $IPT -A "$CH"_"$IF" -p icmp -j ACCEPT
@@ -238,19 +228,6 @@ firewall_start() {
   $IPT -A $CH -j LOG --log-prefix "$CH: "
   $IPT -A $CH -j DENY
 
-  if [ -r $NOFW_HARD ]; then
-    CH='NOFW_HARD'
-    $IPT -N $CH
-    for CIDR in `cat $NOFW_HARD`; do
-      if [ ${#CIDR} != 0 ]; then
-        $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-        $IPT -A $CH -s $CIDR -j DENY
-        $IPT -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
-        $IPT -A $CH -d $CIDR -j DENY
-      fi
-    done
-  fi
-
   CH='FORWARD'
   $IPT -A $CH -j CHECK
   if [ -r $BLACKLIST ]; then
@@ -264,16 +241,19 @@ firewall_start() {
     if [ -r $NOFW_SOFT ]; then
       for CIDR in `cat $NOFW_SOFT`; do
         F=$F_TCP_NOFW mp
-        if [ ${#MP} != 0 ]; then
+        if [ -n "$MP" ]; then
           $IPT -A "$CH"_"$IF" -s $CIDR -p tcp -m multiport --dport $MP -j LOG --log-prefix "NOFW_SOFT: "
           $IPT -A "$CH"_"$IF" -s $CIDR -p tcp -m multiport --dport $MP -j DENY
         fi
         F=$F_UDP_NOFW mp
-        if [ ${#MP} != 0 ]; then
+        if [ -n "$MP" ]; then
           $IPT -A "$CH"_"$IF" -s $CIDR -p udp -m multiport --dport $MP -j LOG --log-prefix "NOFW_SOFT: "
           $IPT -A "$CH"_"$IF" -s $CIDR -p udp -m multiport --dport $MP -j DENY
         fi
       done
+    fi
+    if [ -r $ETHER ]; then
+      $IPT -A "$CH"_"$IF" -j ETHER
     fi
     for IF_O in ${IF_EXT[@]}; do
       if [ -r $ULOG ]; then
@@ -294,12 +274,12 @@ firewall_start() {
     if [ -r $NOFW_SOFT ]; then
       for CIDR in `cat $NOFW_SOFT`; do
         F=$F_TCP_NOFW mp
-        if [ ${#MP} != 0 ]; then
+        if [ -n "$MP" ]; then
           $IPT -A "$CH"_"$IF" -d $CIDR -p tcp -m multiport --sport $MP -j LOG --log-prefix "NOFW_SOFT: "
           $IPT -A "$CH"_"$IF" -d $CIDR -p tcp -m multiport --sport $MP -j DENY
         fi
         F=$F_UDP_NOFW mp
-        if [ ${#MP} != 0 ]; then
+        if [ -n "$MP" ]; then
           $IPT -A "$CH"_"$IF" -d $CIDR -p udp -m multiport --sport $MP -j LOG --log-prefix "NOFW_SOFT: "
           $IPT -A "$CH"_"$IF" -d $CIDR -p udp -m multiport --sport $MP -j DENY
         fi
@@ -308,11 +288,11 @@ firewall_start() {
     $IPT -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPT -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
     F=$F_TCP_FW mp
-    if [ ${#MP} != 0 ]; then
+    if [ -n "$MP" ]; then
       $IPT -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
     fi
     F=$F_UDP_FW mp
-    if [ ${#MP} != 0 ]; then
+    if [ -n "$MP" ]; then
       $IPT -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
     fi
     $IPT -A "$CH"_"$IF" -p icmp -j ACCEPT
@@ -326,8 +306,8 @@ firewall_start() {
   CH='POSTROUTING'
   if [ -r $F_IF_MASQ ]; then
     for IF in `cat $F_IF_MASQ`; do
-      if [ -n $IF ]; then
-	$IPT -t nat -A $CH -o $IF -j MASQUERADE
+      if [ -n "$IF" ]; then
+        $IPT -t nat -A $CH -o $IF -j MASQUERADE
       fi
     done
   fi
@@ -335,53 +315,63 @@ firewall_start() {
 }
 
 firewall_stop() {
-	$IPT -t filter -F
-	$IPT -t filter -X
-	$IPT -t filter -Z
-	$IPT -t nat -F
-	$IPT -t nat -X
-	$IPT -t nat -Z
-	$IPT -t mangle -F
-	$IPT -t mangle -X
-	$IPT -t mangle -Z
-	$IPT -P INPUT ACCEPT
-	$IPT -P OUTPUT ACCEPT
-	$IPT -P FORWARD ACCEPT
+
+  for t in filter nat mangle; do
+    for op in F X Z; do
+      $IPT -t $t -$op
+    done
+  done
+
+  $IPT -P INPUT ACCEPT
+  $IPT -P OUTPUT ACCEPT
+  $IPT -P FORWARD ACCEPT
+
 }
 
 firewall_status() {
-	echo "START $DATE"
-	$IPT -t filter -vnx -L --line-numbers
-	echo "END $DATE"
+
+  echo "START $DATE"
+  $IPT -t filter -vnx -L --line-numbers
+  echo "END $DATE"
+
 }
 
 firewall_dump() {
-	echo "START $DATE" >> $DUMPFILE
-	$IPT -t filter -vnxZ -L --line-numbers >> $DUMPFILE
-	echo "END $DATE" >> $DUMPFILE
+
+  echo "START $DATE" >> $DUMPFILE
+  $IPT -t filter -vnxZ -L --line-numbers >> $DUMPFILE
+  echo "END $DATE" >> $DUMPFILE
+
 }
 
 case "$1" in
+
   start)
-	firewall_start
-	;;
+    firewall_start
+    ;;
+  
   stop)
-	firewall_stop
-	;;
+    firewall_stop
+    ;;
+  
   restart)
-	firewall_stop
-	firewall_start
-	;;
+    firewall_stop
+    firewall_start
+    ;;
+  
   status)
-	firewall_status
-  	;;
+    firewall_status
+    ;;
+
   dump)
-	firewall_dump
-  	;;
+    firewall_dump
+    ;;
+
   *)
-	echo "usage: $0 {start|stop|restart|status|dump}" >&2
-	exit 1
-	;;
+    echo "usage: $0 {start|stop|restart|status|dump} [debug]" >&2
+    exit 1
+    ;;
+
 esac
 
 exit 0
