@@ -1,11 +1,27 @@
 #!/bin/bash
 #
-# rc.firewall-0.16
+# rc.firewall-0.17
+# Linux/Netfilter firewall script.
 #
 # (c) 2003 by ingwar
-# Distributed under the terms of GNU GPLv2
+# Distributed under the terms of GNU GPLv2 or later versions.
 #
-
+# Files in /etc/firewall:
+# 
+# if_ext	external interfaces
+# if_int	internal interfaces
+# if_masq	masqueraded interfaces
+# blacklist	blacklisted hosts
+# nofw_hard	noforwarded hosts
+# nofw_soft	partially noforwarded hosts
+# tcp_ok	open TCP ports
+# udp_ok	open UDP ports
+# tcp_fw	TCP ports, allowed to forward in
+# udp_fw	UDP ports, allowed to forward in
+# tcp_nofw	TCP ports list for nofw_soft
+# udp_nofw	UDP ports list for nofw_soft
+#
+ 
 IPTABLES="iptables"
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
@@ -13,6 +29,7 @@ DUMPFILE="/var/log/iptables.dump"
 FW_HOME="/etc/firewall"
 F_IF_EXT="$FW_HOME/if_ext"
 F_IF_INT="$FW_HOME/if_int"
+F_IF_MASQ="$FW_HOME/if_masq"
 BLACKLIST="$FW_HOME/blacklist"
 NOFW_HARD="$FW_HOME/nofw_hard"
 NOFW_SOFT="$FW_HOME/nofw_soft"
@@ -23,58 +40,69 @@ F_UDP_FW="$FW_HOME/udp_fw"
 F_TCP_NOFW="$FW_HOME/tcp_nofw"
 F_UDP_NOFW="$FW_HOME/udp_nofw"
 
+ERRMSG1="Can not open config file"
+ERRMSG2="Empty config file"
+
+mp() {
+
+  if [ -r $F ]; then
+    i=1
+    for P in `cat $F`; do
+      if [ -z $MP ]; then
+        MP="$P"
+      else
+        MP="$MP,$P"
+      fi
+    done
+  else
+    echo "$ERRMSG1: $F"
+    exit 1
+  fi
+  if [ -z $MP ]; then
+    echo "$ERRMSG2: $F"
+    exit 1
+  fi
+
+}
+
 firewall_start() {
 
-  i=1
-  for IF in `cat $F_IF_EXT`; do
-    if [ -n $IF ]; then
-      IF_EXT[$i]="$IF"
-      echo if_ext: $IF
-      i=$i+1
-    fi
-  done
+  if [ -r $F_IF_EXT ]; then
+    i=1
+    for IF in `cat $F_IF_EXT`; do
+      if [ -n $IF ]; then
+        IF_EXT[$i]="$IF"
+        echo if_ext: $IF
+        i=$i+1
+      fi
+    done
+  else
+    echo "$ERRMSG1: $F_IF_EXT"
+    exit 1
+  fi
+  if [ ${#IF_EXT[@]} -lt 1 ]; then
+    echo "$ERRMSG2: $F_IF_EXT"
+    exit 1
+  fi
   
-  i=1
-  for IF in `cat $F_IF_INT`; do
-    if [ -n $IF ]; then
-      IF_INT[$i]="$IF"
-      echo if_int: $IF
-      i=$i+1
-    fi
-  done
+  if [ -r $F_IF_INT ]; then
+    i=1
+    for IF in `cat $F_IF_INT`; do
+      if [ -n $IF ]; then
+        IF_INT[$i]="$IF"
+        echo if_int: $IF
+        i=$i+1
+      fi
+    done
+  else
+    echo "$ERRMSG1: $F_IF_INT"
+    exit 1
+  fi
+  if [ ${#IF_INT[@]} -lt 1 ]; then
+    echo "$ERRMSG2: $F_IF_INT"
+    exit 1
+  fi
 
-  for P in `cat $F_TCP_OK`; do
-    if [ -z $MP_TCP_OK ]; then
-      MP_TCP_OK="$P"
-    else
-      MP_TCP_OK="$MP_TCP_OK,$P"
-    fi
-  done
-
-  for P in `cat $F_UDP_OK`; do
-    if [ -z $MP_UDP_OK ]; then
-      MP_UDP_OK="$P"
-    else
-      MP_UDP_OK="$MP_UDP_OK,$P"
-    fi
-  done
-
-  for P in `cat $F_TCP_NOFW`; do
-    if [ -z $MP_TCP_NOFW ]; then
-      MP_TCP_NOFW="$P"
-    else
-      MP_TCP_NOFW="$MP_TCP_NOFW,$P"
-    fi
-  done
-
-  for P in `cat $F_UDP_NOFW`; do
-    if [ -z $MP_UDP_NOFW ]; then
-      MP_UDP_NOFW="$P"
-    else
-      MP_UDP_NOFW="$MP_UDP_NOFW,$P"
-    fi
-  done
- 
   $IPTABLES -P INPUT DROP
   $IPTABLES -P OUTPUT DROP
   $IPTABLES -P FORWARD DROP
@@ -91,7 +119,7 @@ firewall_start() {
 
   CH='BLACKLIST'
   $IPTABLES -N $CH
-  for CIDR in `cat $BLACKLIST` ; do
+  for CIDR in `cat $BLACKLIST`; do
     $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
     $IPTABLES -A $CH -s $CIDR -j DENY
   done
@@ -107,20 +135,22 @@ firewall_start() {
   CH='INPUT'
   $IPTABLES -A $CH -j CHECK
   $IPTABLES -A $CH -j BLACKLIST
-  for IF in lo ${IF_INT[@]} ; do
+  for IF in lo ${IF_INT[@]}; do
     $IPTABLES -N "$CH"_"$IF"
     $IPTABLES -A "$CH"_"$IF" -j ACCEPT
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
-  for IF in ${IF_EXT[@]} ; do
+  for IF in ${IF_EXT[@]}; do
     $IPTABLES -N "$CH"_"$IF"
     $IPTABLES -A "$CH"_"$IF" -j ULOG_IN
     $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
+    F=$F_TCP_OK mp
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    F=$F_UDP_OK mp
+    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH: "
+    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
@@ -145,45 +175,49 @@ firewall_start() {
 
   CH='NOFW'
   $IPTABLES -N $CH
-  for CIDR in `cat $NOFW_HARD` ; do
+  for CIDR in `cat $NOFW_HARD`; do
     $IPTABLES -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
     $IPTABLES -A $CH -s $CIDR -j DENY
     $IPTABLES -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
     $IPTABLES -A $CH -d $CIDR -j DENY
   done
-  for CIDR in `cat $NOFW_SOFT` ; do
-    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j DENY
-    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j DENY
-    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j DENY
-    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j LOG --log-prefix "$CH: "
-    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j DENY
+  for CIDR in `cat $NOFW_SOFT`; do
+    F=$F_TCP_NOFW mp
+    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP -j DENY
+    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP -j DENY
+    F=$F_TCP_NOFW mp
+    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP -j DENY
+    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j LOG --log-prefix "$CH: "
+    $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP -j DENY
   done
 
   CH='FORWARD'
   $IPTABLES -A $CH -j CHECK
   $IPTABLES -A $CH -j BLACKLIST
-  for IF in ${IF_INT[@]} ; do
+  for IF in ${IF_INT[@]}; do
     $IPTABLES -N "$CH"_"$IF"
     $IPTABLES -A "$CH"_"$IF" -j NOFW
-    for IF_O in ${IF_EXT[@]} ; do
+    for IF_O in ${IF_EXT[@]}; do
       $IPTABLES -A "$CH"_"$IF" -o $IF_O -j ULOG_OUT
     done
     $IPTABLES -A "$CH"_"$IF" -j ACCEPT
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
-  for IF in ${IF_EXT[@]} ; do
+  for IF in ${IF_EXT[@]}; do
     $IPTABLES -N "$CH"_"$IF"
     $IPTABLES -A "$CH"_"$IF" -j ULOG_IN
     $IPTABLES -A "$CH"_"$IF" -j NOFW
     $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
+    F=$F_TCP_FW mp
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP -j ACCEPT
+    F=$F_UDP_FW mp
+    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP -j ACCEPT
     $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
-    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH: "
+    $IPTABLES -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
     $IPTABLES -A "$CH"_"$IF" -j DENY
     $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
   done
@@ -191,9 +225,13 @@ firewall_start() {
   $IPTABLES -A $CH -j DENY
 
   CH='POSTROUTING'
-  for IF in ${IF_EXT[@]}; do
-    echo $IPTABLES -t nat -A $CH -o $IF -j MASQUERADE
-  done
+  if [ -r $F_IF_MASQ ]; then
+    for IF in `cat $F_IF_MASQ`; do
+      if [ -n $IF ]; then
+	$IPTABLES -t nat -A $CH -o $IF -j MASQUERADE
+      fi
+    done
+  fi
 
 }
 
