@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.20
+# rc.firewall-0.21
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -29,10 +29,14 @@
 # |  -udp_nofw	UDP ports list for nofw_soft
 # |
 # |-ulog        flag file, if present - ULOG works
+# |  -noulog    don't ULOG these hosts
 #
-# Relese history:
+# Release history:
 #
-# 0.20: "Relese history" added.
+# 0.21  Implemented comditional ULOGging.
+#       Added config file noulog.
+#
+# 0.20: "Release history" added.
 #       ULOGging made conditional. Added "ulog" flag file.
 #       Optimized chains for loopback interface.
 #       Prevented BLACKLIST and NOFW_HARD chains from creating,
@@ -71,6 +75,7 @@ F_UDP_FW="$FW/udp_fw"
 F_TCP_NOFW="$FW/tcp_nofw"
 F_UDP_NOFW="$FW/udp_nofw"
 ULOG="$FW/ulog"
+NOULOG="$FW/noulog"
 
 ERRMSG1="Can not open config file"
 ERRMSG2="Empty config file"
@@ -158,9 +163,23 @@ firewall_start() {
   if [ -r $ULOG ]; then
     CH='ULOG_IN'
     $IPT -N $CH
+    if [ -r $NOULOG ]; then
+      for CIDR in `cat $NOULOG`; do
+        if [ ${#CIDR} != 0 ]; then
+          $IPT -A $CH -s $CIDR -j RETURN
+        fi
+      done
+    fi
     $IPT -A $CH -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
     CH='ULOG_OUT'
     $IPT -N $CH
+    if [ -r $NOULOG ]; then
+      for CIDR in `cat $NOULOG`; do
+        if [ ${#CIDR} != 0 ]; then
+          $IPT -A $CH -d $CIDR -j RETURN
+        fi
+      done
+    fi
     $IPT -A $CH -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
   fi
 
