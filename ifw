@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.27
+# rc.firewall-0.28
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -62,11 +62,11 @@ mp() {
         fi
         ;;
       '')
-        echo "Empty protocol in $INTERFACES." >&2
+        echo "Empty protocol in $F." >&2
         exit 1
         ;;
       *)
-        echo "Unknown protocol \"$PROTO\" in $INTERFACES." >&2
+        echo "Unknown protocol \"$PROTO\" in $F." >&2
         exit 1
         ;;
       esac
@@ -124,58 +124,58 @@ firewall_start() {
   $IPT -P FORWARD DROP
 
   # what to do with denied packets
-  CH='DENY'
-  $IPT -N $CH
-  $IPT -A $CH -p tcp -j REJECT --reject-with tcp-reset
-  $IPT -A $CH -p udp -j REJECT --reject-with icmp-port-unreachable
-  $IPT -A $CH -j DROP
+  CH1='DENY'
+  $IPT -N $CH1
+  $IPT -A $CH1 -p tcp -j REJECT --reject-with tcp-reset
+  $IPT -A $CH1 -p udp -j REJECT --reject-with icmp-port-unreachable
+  $IPT -A $CH1 -j DROP
 
   # sanity check, filter strange packets
-  CH='CHECK'
-  $IPT -N $CH
-  [[ $log -ge 1 ]] && $IPT -A $CH -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH: "
-  $IPT -A $CH -p tcp ! --syn -m state --state NEW -j DROP
+  CH1='CHECK'
+  $IPT -N $CH1
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
+  $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
 
   # known ICMP types accepted
-  CH='ICMP'
-  $IPT -N $CH
-  $IPT -A $CH -p icmp --icmp-type echo-request -j ACCEPT
-  $IPT -A $CH -p icmp --icmp-type echo-reply -j ACCEPT
-  $IPT -A $CH -p icmp --icmp-type destination-unreachable -j ACCEPT
-  $IPT -A $CH -p icmp --icmp-type time-exceeded -j ACCEPT
-  [[ $log -ge 1 ]] && $IPT -A $CH -j LOG --log-prefix "$CH: "
-  $IPT -A $CH -j DROP
+  CH1='ICMP'
+  $IPT -N $CH1
+  $IPT -A $CH1 -p icmp --icmp-type echo-request -j ACCEPT
+  $IPT -A $CH1 -p icmp --icmp-type echo-reply -j ACCEPT
+  $IPT -A $CH1 -p icmp --icmp-type destination-unreachable -j ACCEPT
+  $IPT -A $CH1 -p icmp --icmp-type time-exceeded -j ACCEPT
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
+  $IPT -A $CH1 -j DROP
 
   # blacklist: hosts, not allowed to connect or forward
   if [ -r $BLACKLIST ]; then
-    CH='BLACKLIST'
-    $IPT -N $CH
+    CH1='BLACKLIST'
+    $IPT -N $CH1
     for CIDR in `cat $BLACKLIST`; do
-      if [ -n "$CIDR" ]; then
-        [[ $log -ge 1 ]] && $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-        $IPT -A $CH -s $CIDR -j DENY
+      if [ -n $CIDR ]; then
+        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -j LOG --log-prefix "$CH1: "
+        $IPT -A $CH1 -s $CIDR -j DENY
       fi
     done
   fi
 
   # hardlist: hosts, not allowed to forward
   if [ -r $HARDLIST ]; then
-    CH='HARDLIST'
-    $IPT -N $CH
+    CH1='HARDLIST'
+    $IPT -N $CH1
     for CIDR in `cat $HARDLIST`; do
-      if [ -n "$CIDR" ]; then
-        [[ $log -ge 1 ]] && $IPT -A $CH -s $CIDR -j LOG --log-prefix "$CH: "
-        $IPT -A $CH -s $CIDR -j DENY
-        [[ $log -ge 1 ]] && $IPT -A $CH -d $CIDR -j LOG --log-prefix "$CH: "
-        $IPT -A $CH -d $CIDR -j DENY
+      if [ -n $CIDR ]; then
+        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -j LOG --log-prefix "$CH1: "
+        $IPT -A $CH1 -s $CIDR -j DENY
+        [[ $log -ge 1 ]] && $IPT -A $CH1 -d $CIDR -j LOG --log-prefix "$CH1: "
+        $IPT -A $CH1 -d $CIDR -j DENY
       fi
     done
   fi
 
   # only accept packets from known MAC+IP pairs
   if [ -r $ETHER ]; then
-    CH='ETHER'
-    $IPT -N $CH
+    CH1='ETHER'
+    $IPT -N $CH1
     flag=0
     for str in `cat $ETHER`; do
       if [ $flag == 0 ]; then
@@ -183,175 +183,192 @@ firewall_start() {
         flag=1
       else
         IP=$str
-        if [ -n "$MAC" ] && [ -n "$IP" ]; then
-          $IPT -A $CH -m mac --mac-source $MAC -s $IP -j RETURN
+        if [ -n $MAC ] && [ -n $IP ]; then
+          $IPT -A $CH1 -m mac --mac-source $MAC -s $IP -j RETURN
         fi
         flag=0
       fi
     done
-    [[ $log -ge 1 ]] && $IPT -A $CH -j LOG --log-prefix "$CH: "
-    $IPT -A $CH -j DENY
+    [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
+    $IPT -A $CH1 -j DENY
   fi
 
   # packet counter
   if [ -r $ULOG ]; then
 
     # incoming packets counter
-    CH='ULOG_IN'
-    $IPT -N $CH
+    CH1='ULOG_IN'
+    $IPT -N $CH1
 
     # do not count packets from hosts-exceptions
     if [ -r $NOULOG ]; then
       for CIDR in `cat $NOULOG`; do
-        [[ -n "$CIDR" ]] && $IPT -A $CH -s $CIDR -j RETURN
+        [[ -n $CIDR ]] && $IPT -A $CH1 -s $CIDR -j RETURN
       done
     fi
 
     # count these packets as incoming
-    $IPT -A $CH -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
+    $IPT -A $CH1 -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
 
     # outgoing packets counter
-    CH='ULOG_OUT'
-    $IPT -N $CH
+    CH1='ULOG_OUT'
+    $IPT -N $CH1
 
     # do not count packets to hosts-exceptions
     if [ -r $NOULOG ]; then
       for CIDR in `cat $NOULOG`; do
-        [[ -n "$CIDR" ]] && $IPT -A $CH -d $CIDR -j RETURN
+        [[ -n $CIDR ]] && $IPT -A $CH1 -d $CIDR -j RETURN
       done
     fi
 
     # count these packets as outgoing
-    $IPT -A $CH -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
+    $IPT -A $CH1 -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
 
   fi
 
   # input chain, always exists
-  CH='INPUT'
+  CH1='INPUT'
 
   # accept all loopback packets
-  $IPT -A $CH -i lo -j ACCEPT
+  $IPT -A $CH1 -i lo -j ACCEPT
 
   # sanity check first
-  $IPT -A $CH -j CHECK
+  $IPT -A $CH1 -j CHECK
 
   # deny pockects from blacklisted hosts
-  [[ -r $BLACKLIST ]] && $IPT -A $CH -j BLACKLIST
+  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
 
     # deny trffic from unknown MAC+IP pairs
-    [[ -r $ETHER ]] && $IPT -A "$CH"_"$IF" -j ETHER
+    [[ -r $ETHER ]] && $IPT -A $CH2 -j ETHER
 
     # accept all the other
-    $IPT -A "$CH"_"$IF" -j ACCEPT
+    $IPT -A $CH2 -j ACCEPT
 
     # hook to upper chain
-    $IPT -A $CH -i $IF -j "$CH"_"$IF"
+    $IPT -A $CH1 -i $IF -j $CH2
 
   done
 
   # separate chain for each external interface
   for IF in ${IF_EXT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
 
     # count all incoming packets
-    [[ -r $ULOG ]] && $IPT -A "$CH"_"$IF" -j ULOG_IN
+    [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_IN
 
     # accept established connections
-    $IPT -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
-    $IPT -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPT -A $CH2 -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to open ports on this host
     if [ -r $OPEN ]; then
       F=$OPEN mp
-      [[ -n "$MP_TCP" ]] && $IPT -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP -j ACCEPT
-      [[ -n "$MP_UDP" ]] && $IPT -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP -j ACCEPT
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
     fi
 
     # accept ICMP
-    $IPT -A "$CH"_"$IF" -p icmp -j ICMP
+    $IPT -A $CH2 -p icmp -j ICMP
 
     # deny all the rest on this interface
-    [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
-    $IPT -A "$CH"_"$IF" -j DENY
+    [[ $log -ge 1 ]] && $IPT -A $CH2 -j LOG --log-prefix "$CH2: "
+    $IPT -A $CH2 -j DENY
 
     # hook to upper chain
-    $IPT -A "$CH" -i $IF -j "$CH"_"$IF"
+    $IPT -A $CH1 -i $IF -j $CH2
 
   done
 
   # deny all the rest
-  [[ $log -ge 1 ]] && $IPT -A $CH -j LOG --log-prefix "$CH: "
-  $IPT -A $CH -j DENY
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
+  $IPT -A $CH1 -j DENY
 
   # output chain, always exists
-  CH='OUTPUT'
+  CH1='OUTPUT'
 
   # accept all loopback packets
-  $IPT -A $CH -o lo -j ACCEPT
+  $IPT -A $CH1 -o lo -j ACCEPT
 
   # deny packets to blacklisted hosts
-  [[ -r $BLACKLIST ]] && $IPT -A $CH -j BLACKLIST
+  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
 
     # accept all packets to internal hosts
-    $IPT -A "$CH"_"$IF" -j ACCEPT
+    $IPT -A $CH2 -j ACCEPT
 
     # hook to upper chain
-    $IPT -A $CH -o $IF -j "$CH"_"$IF"
+    $IPT -A $CH1 -o $IF -j $CH2
 
   done
 
   # separate chain for each external interface
   for IF in ${IF_EXT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
 
     # count all packets to external interfaces
-    [[ -r $ULOG ]] && $IPT -A "$CH"_"$IF" -j ULOG_OUT
+    [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_OUT
 
     # accept all packets to external interfaces
-    $IPT -A "$CH"_"$IF" -j ACCEPT
+    $IPT -A $CH2 -j ACCEPT
 
     # hook to upper chain
-    $IPT -A $CH -o $IF -j "$CH"_"$IF"
+    $IPT -A $CH1 -o $IF -j $CH2
 
   done
 
   # deny all the other
-  [[ $log -ge 1 ]] && $IPT -A $CH -j LOG --log-prefix "$CH: "
-  $IPT -A $CH -j DENY
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
+  $IPT -A $CH1 -j DENY
 
   # forward chain, always exists
-  CH='FORWARD'
+  CH1='FORWARD'
 
   # sanity check first
-  $IPT -A $CH -j CHECK
+  $IPT -A $CH1 -j CHECK
 
   # deny packets from blacklisted hosts
-  [[ -r $BLACKLIST ]] && $IPT -A $CH -j BLACKLIST
+  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
+
+    # pass packets only with valid source IP
+    if [ -r $INTERFACES.$IF ]; then
+      CH3=$CH2\_SIP
+      $IPT -N $CH3
+      for CIDR in `cat $INTERFACES.$IF`; do
+        [[ -n $CIDR ]] && $IPT -A $CH3 -s $CIDR -j RETURN
+      done
+      [[ $log -ge 1 ]] && $IPT -A $CH3 -j LOG --log-prefix "$CH3: "
+      $IPT -A $CH3 -j DENY
+      $IPT -A $CH2 -j $CH3
+    fi
 
     # don't forward packets from/to internal interfaces to/from blinded interfaces
     for IF_O in ${IF_INT[@]}; do
       for IF_B in ${IF_BLIND[@]}; do
-        if ([ -n "$IF_B" ] && [ "$IF" != "$IF_O" ]) && ([ "$IF" == "$IF_B" ] || [ "$IF_O" == "$IF_B" ]); then
-          [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -o "$IF_O" -j LOG --log-prefix "BLIND: "
-          $IPT -A "$CH"_"$IF" -o "$IF_O" -j DENY
+        if ([ -n $IF_B ] && [ $IF != $IF_O ]) && ([ $IF == $IF_B ] || [ $IF_O == $IF_B ]); then
+          [[ $log -ge 1 ]] && $IPT -A $CH2 -o $IF_O -j LOG --log-prefix "BLIND: "
+          $IPT -A $CH2 -o $IF_O -j DENY
 	fi
       done
     done
 
     # don't forward packets from hardlisted hosts
-    [[ -r $HARDLIST ]] && $IPT -A "$CH"_"$IF" -j HARDLIST
+    [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets from softlisted hosts on specified ports
     if [ -r $SOFTLIST ]; then
@@ -359,40 +376,41 @@ firewall_start() {
         if [ -r $NOPASS ]; then
           F=$NOPASS mp
           if [ -n "$MP_TCP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -s $CIDR -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A "$CH"_"$IF" -s $CIDR -p tcp -m multiport --dport $MP_TCP -j DENY
+            [[ $log -ge 1 ]] && $IPT -A $CH2 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
+            $IPT -A $CH2 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j DENY
           fi
           if [ -n "$MP_UDP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -s $CIDR -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A "$CH"_"$IF" -s $CIDR -p udp -m multiport --dport $MP_UDP -j DENY
+            [[ $log -ge 1 ]] && $IPT -A $CH2 -s $CIDR -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
+            $IPT -A $CH2 -s $CIDR -p udp -m multiport --dport $MP_UDP -j DENY
           fi
         fi
       done
     fi
 
     # deny packets from unknown MAC+IP pairs
-    [[ -r $ETHER ]] && $IPT -A "$CH"_"$IF" -j ETHER
+    [[ -r $ETHER ]] && $IPT -A $CH2 -j ETHER
 
     # count only packets, coming out from external interfaces
     for IF_O in ${IF_EXT[@]}; do
-      [[ -r $ULOG ]] && $IPT -A "$CH"_"$IF" -o $IF_O -j ULOG_OUT
+      [[ -r $ULOG ]] && $IPT -A $CH2 -o $IF_O -j ULOG_OUT
     done
 
     # accept all the other on this interface
-    $IPT -A "$CH"_"$IF" -j ACCEPT
-    $IPT -A "$CH" -i $IF -j "$CH"_"$IF"
+    $IPT -A $CH2 -j ACCEPT
+    $IPT -A $CH1 -i $IF -j $CH2
 
   done
 
   # separate chain for each interface
   for IF in ${IF_EXT[@]}; do
-    $IPT -N "$CH"_"$IF"
+    CH2=$CH1\_$IF
+    $IPT -N $CH2
 
     # count all packets
-    [[ -r $ULOG ]] && $IPT -A "$CH"_"$IF" -j ULOG_IN
+    [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_IN
 
     # don't forward packets to hardlisted hosts
-    [[ -r $HARDLIST ]] && $IPT -A "$CH"_"$IF" -j HARDLIST
+    [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets to softlisted hosts on specified ports
     if [ -r $SOFTLIST ]; then
@@ -400,47 +418,47 @@ firewall_start() {
         if [ -r $NOPASS ]; then
           F=$NOPASS mp
           if [ -n "$MP_TCP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -d $CIDR -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A "$CH"_"$IF" -d $CIDR -p tcp -m multiport --sport $MP_TCP -j DENY
+            [[ $log -ge 1 ]] && $IPT -A $CH2 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
+            $IPT -A $CH2 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j DENY
           fi
           if [ -n "$MP_UDP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -d $CIDR -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A "$CH"_"$IF" -d $CIDR -p udp -m multiport --sport $MP_UDP -j DENY
+            [[ $log -ge 1 ]] && $IPT -A $CH2 -d $CIDR -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
+            $IPT -A $CH2 -d $CIDR -p udp -m multiport --sport $MP_UDP -j DENY
           fi
         fi
       done
     fi
 
     # accept established connections
-    $IPT -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
-    $IPT -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPT -A $CH2 -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to internal hosts on chosen ports
     F=$PASS mp
-    [[ -n "$MP_TCP" ]] && $IPT -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP -j ACCEPT
-    [[ -n "$MP_UDP" ]] && $IPT -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP -j ACCEPT
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
 
     # accept ICMP
-    $IPT -A "$CH"_"$IF" -p icmp -j ICMP
+    $IPT -A $CH2 -p icmp -j ICMP
 
     # deny all the other on this interface
-    [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
-    $IPT -A "$CH"_"$IF" -j DENY
+    [[ $log -ge 1 ]] && $IPT -A $CH2 -j LOG --log-prefix "$CH2: "
+    $IPT -A $CH2 -j DENY
 
     # hook to upper chain
-    $IPT -A "$CH" -i $IF -j "$CH"_"$IF"
+    $IPT -A $CH1 -i $IF -j $CH2
 
   done
 
   # deny all the other
-  [[ $log -ge 1 ]] && $IPT -A "$CH" -j LOG --log-prefix "$CH: "
-  $IPT -A "$CH" -j DENY
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
+  $IPT -A $CH1 -j DENY
 
   # DNAT to internal hosts
-  if [ -r "$DNAT" ]; then
+  if [ -r $DNAT ]; then
 
     # prerouting chain, always exists
-    CH='PREROUTING'
+    CH1='PREROUTING'
 
     # only for external interfaces
     for IF in ${IF_EXT[@]}; do
@@ -454,8 +472,8 @@ firewall_start() {
           flag=1
         else
           DST=$str
-          if [ -n "$PORT" ] && [ -n "$PROTO" ] && [ -n "$DST" ]; then
-            $IPT -t nat -A $CH -i $IF -p $PROTO --dport $PORT -j DNAT --to $DST
+          if [ -n $PORT ] && [ -n $PROTO ] && [ -n $DST ]; then
+            $IPT -t nat -A $CH1 -i $IF -p $PROTO --dport $PORT -j DNAT --to $DST
           fi
           flag=0
         fi
@@ -466,11 +484,11 @@ firewall_start() {
   fi
 
   # postrouting chain, always exists
-  CH='POSTROUTING'
+  CH1='POSTROUTING'
 
   # masquerade on chosen interfaces
   for IF in ${IF_MASQ[@]}; do
-    [[ -n "$IF" ]] && $IPT -t nat -A "$CH" -o $IF -j MASQUERADE
+    [[ -n $IF ]] && $IPT -t nat -A $CH1 -o $IF -j MASQUERADE
   done
 
 }
