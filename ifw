@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.25
+# rc.firewall-0.26
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -133,6 +133,16 @@ firewall_start() {
   [[ $log -ge 1 ]] && $IPT -A $CH -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH: "
   $IPT -A $CH -p tcp ! --syn -m state --state NEW -j DROP
 
+  # known ICMP types accepted
+  CH='ICMP'
+  $IPT -N $CH
+  $IPT -A $CH -p icmp --icmp-type echo-request -j ACCEPT
+  $IPT -A $CH -p icmp --icmp-type echo-reply -j ACCEPT
+  $IPT -A $CH -p icmp --icmp-type destination-unreachable -j ACCEPT
+  $IPT -A $CH -p icmp --icmp-type time-exceeded -j ACCEPT
+  [[ $log -ge 1 ]] && $IPT -A $CH -j LOG --log-prefix "$CH: "
+  $IPT -A $CH -j DROP
+
   # blacklist: hosts, not allowed to connect or forward
   if [ -r $BLACKLIST ]; then
     CH='BLACKLIST'
@@ -259,7 +269,7 @@ firewall_start() {
     fi
 
     # accept ICMP
-    $IPT -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPT -A "$CH"_"$IF" -p icmp -j ICMP
 
     # deny all the rest on this interface
     [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
@@ -398,7 +408,7 @@ firewall_start() {
     [[ -n "$MP_UDP" ]] && $IPT -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP -j ACCEPT
 
     # accept ICMP
-    $IPT -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPT -A "$CH"_"$IF" -p icmp -j ICMP
 
     # deny all the other on this interface
     [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -j LOG --log-prefix "$CH"_"$IF: "
