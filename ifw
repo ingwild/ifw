@@ -1,0 +1,232 @@
+#!/bin/bash
+#
+# rc.firewall-0.15
+#
+# (c) 2003 by ingwar
+# Distributed under the terms of GNU GPLv2
+#
+
+IPTABLES="iptables"
+DATE=`date '+%Y%m%d%H%M%S'`
+DUMPFILE="/var/log/iptables.dump"
+
+FW_HOME="/etc/firewall"
+F_IF_EXT="$FW_HOME/if_ext"
+F_IF_INT="$FW_HOME/if_int"
+BLACKLIST="$FW_HOME/blacklist"
+NOFW_HARD="$FW_HOME/nofw_hard"
+NOFW_SOFT="$FW_HOME/nofw_soft"
+F_TCP_OK="$FW_HOME/tcp_ok"
+F_UDP_OK="$FW_HOME/udp_ok"
+F_TCP_FW="$FW_HOME/tcp_fw"
+F_UDP_FW="$FW_HOME/udp_fw"
+F_TCP_NOFW="$FW_HOME/tcp_nofw"
+F_UDP_NOFW="$FW_HOME/udp_nofw"
+
+firewall_start() {
+
+  i=1
+  for IF in `cat $F_IF_EXT`; do
+    if [ -n $IF ]; then
+      IF_EXT[$i]="$IF"
+      echo if_ext: $IF
+      i=$i+1
+    fi
+  done
+  
+  i=1
+  for IF in `cat $F_IF_INT`; do
+    if [ -n $IF ]; then
+      IF_INT[$i]="$IF"
+      echo if_int: $IF
+      i=$i+1
+    fi
+  done
+
+  for P in `cat $F_TCP_OK`; do
+    if [ -z $MP_TCP_OK ]; then
+      MP_TCP_OK="$P"
+    else
+      MP_TCP_OK="$MP_TCP_OK,$P"
+    fi
+  done
+
+  for P in `cat $F_UDP_OK`; do
+    if [ -z $MP_UDP_OK ]; then
+      MP_UDP_OK="$P"
+    else
+      MP_UDP_OK="$MP_UDP_OK,$P"
+    fi
+  done
+
+  for P in `cat $F_TCP_NOFW`; do
+    if [ -z $MP_TCP_NOFW ]; then
+      MP_TCP_NOFW="$P"
+    else
+      MP_TCP_NOFW="$MP_TCP_NOFW,$P"
+    fi
+  done
+
+  for P in `cat $F_UDP_NOFW`; do
+    if [ -z $MP_UDP_NOFW ]; then
+      MP_UDP_NOFW="$P"
+    else
+      MP_UDP_NOFW="$MP_UDP_NOFW,$P"
+    fi
+  done
+ 
+  $IPTABLES -P INPUT DROP
+  $IPTABLES -P OUTPUT DROP
+  $IPTABLES -P FORWARD DROP
+
+  CH='DENY'
+  $IPTABLES -N $CH
+  $IPTABLES -A $CH -j LOG
+  $IPTABLES -A $CH -p tcp -j REJECT --reject-with tcp-reset
+  $IPTABLES -A $CH -p udp -j REJECT --reject-with icmp-port-unreachable
+  $IPTABLES -A $CH -j DROP
+
+  CH='CHECK'
+  $IPTABLES -N $CH
+  $IPTABLES -A $CH -p tcp ! --syn -m state --state NEW -j DROP
+
+  CH='BLACKLIST'
+  $IPTABLES -N $CH
+  for CIDR in `cat $BLACKLIST` ; do
+    $IPTABLES -A $CH -s $CIDR -j DENY
+  done
+
+  CH='ULOG_IN'
+  $IPTABLES -N $CH
+  $IPTABLES -A $CH -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
+  
+  CH='ULOG_OUT'
+  $IPTABLES -N $CH
+  $IPTABLES -A $CH -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
+
+  CH='INPUT'
+  $IPTABLES -A $CH -j CHECK
+  $IPTABLES -A $CH -j BLACKLIST
+  for IF in lo ${IF_INT[@]} ; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ACCEPT
+    $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
+  done
+  for IF in ${IF_EXT[@]} ; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ULOG_IN
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -j DENY
+    $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
+  done
+  $IPTABLES -A $CH -j DENY
+
+  CH='OUTPUT'
+  $IPTABLES -A $CH -j BLACKLIST
+  for IF in lo ${IF_INT[@]}; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ACCEPT
+    $IPTABLES -A $CH -o $IF -j "$CH"_"$IF"
+  done
+  for IF in ${IF_EXT[@]}; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ULOG_OUT
+    $IPTABLES -A "$CH"_"$IF" -j ACCEPT
+    $IPTABLES -A $CH -o $IF -j "$CH"_"$IF"
+  done
+  $IPTABLES -A $CH -j DENY
+
+  CH='FORWARD'
+  $IPTABLES -A $CH -j CHECK
+  $IPTABLES -A $CH -j BLACKLIST
+  for IF in ${IF_INT[@]} ; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ULOG_OUT
+    $IPTABLES -A "$CH"_"$IF" -j ACCEPT
+    $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
+  done
+  for IF in ${IF_EXT[@]} ; do
+    $IPTABLES -N "$CH"_"$IF"
+    $IPTABLES -A "$CH"_"$IF" -j ULOG_IN
+    for CIDR in `cat $NOFW_HARD` ; do
+      $IPTABLES -A $CH -s $CIDR -j DENY
+      $IPTABLES -A $CH -d $CIDR -j DENY
+    done
+    for CIDR in `cat $NOFW_SOFT` ; do
+      $IPTABLES -A $CH -s $CIDR -p tcp -m multiport --dport $MP_TCP_NOFW -j DENY
+      $IPTABLES -A $CH -s $CIDR -p udp -m multiport --dport $MP_UDP_NOFW -j DENY
+      $IPTABLES -A $CH -d $CIDR -p tcp -m multiport --sport $MP_TCP_NOFW -j DENY
+      $IPTABLES -A $CH -d $CIDR -p udp -m multiport --sport $MP_UDP_NOFW -j DENY
+    done
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p tcp -m multiport --dport $MP_TCP_OK -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p udp -m multiport --dport $MP_UDP_OK -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -p icmp -j ACCEPT
+    $IPTABLES -A "$CH"_"$IF" -j DENY
+    $IPTABLES -A $CH -i $IF -j "$CH"_"$IF"
+  done
+  $IPTABLES -A $CH -j DENY
+
+  CH='POSTROUTING'
+  for IF in ${IF_EXT[@]}; do
+    $IPTABLES -t nat -A $CH -o $IF -j MASQUERADE
+  done
+
+}
+
+firewall_stop() {
+	$IPTABLES -t filter -F
+	$IPTABLES -t filter -X
+	$IPTABLES -t filter -Z
+	$IPTABLES -t nat -F
+	$IPTABLES -t nat -X
+	$IPTABLES -t nat -Z
+	$IPTABLES -t mangle -F
+	$IPTABLES -t mangle -X
+	$IPTABLES -t mangle -Z
+	$IPTABLES -P INPUT ACCEPT
+	$IPTABLES -P OUTPUT ACCEPT
+	$IPTABLES -P FORWARD ACCEPT
+}
+
+firewall_status() {
+	echo "START $DATE"
+	$IPTABLES -t filter -vnx -L --line-numbers
+	echo "END $DATE"
+}
+
+firewall_dump() {
+	echo "START $DATE" >> $DUMPFILE
+	$IPTABLES -t filter -vnxZ -L --line-numbers >> $DUMPFILE
+	echo "END $DATE" >> $DUMPFILE
+}
+
+case "$1" in
+  start)
+	firewall_start
+	;;
+  stop)
+	firewall_stop
+	;;
+  restart)
+	firewall_stop
+	firewall_start
+	;;
+  status)
+	firewall_status
+  	;;
+  dump)
+	firewall_dump
+  	;;
+  *)
+	echo "usage: $0 {start|stop|restart|status|dump}" >&2
+	exit 1
+	;;
+esac
+
+exit 0
