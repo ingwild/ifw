@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.26
+# rc.firewall-0.27
 # Linux/Netfilter firewall script.
 #
 # (c) 2004 by ingwar
@@ -96,6 +96,9 @@ firewall_start() {
             ;;
           "masq")
             IF_MASQ[${#IF_MASQ[@]}+1]=$IF
+            ;;
+          "blind")
+            IF_BLIND[${#IF_BLIND[@]}+1]=$IF
             ;;
           *)
             echo "Unknown type \"$TYPE\" for interface \"$IF\"." >&2
@@ -336,6 +339,16 @@ firewall_start() {
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
     $IPT -N "$CH"_"$IF"
+
+    # don't forward packets from/to internal interfaces to/from blinded interfaces
+    for IF_O in ${IF_INT[@]}; do
+      for IF_B in ${IF_BLIND[@]}; do
+        if ([ -n "$IF_B" ] && [ "$IF" != "$IF_O" ]) && ([ "$IF" == "$IF_B" ] || [ "$IF_O" == "$IF_B" ]); then
+          [[ $log -ge 1 ]] && $IPT -A "$CH"_"$IF" -o "$IF_O" -j LOG --log-prefix "BLIND: "
+          $IPT -A "$CH"_"$IF" -o "$IF_O" -j DENY
+	fi
+      done
+    done
 
     # don't forward packets from hardlisted hosts
     [[ -r $HARDLIST ]] && $IPT -A "$CH"_"$IF" -j HARDLIST
