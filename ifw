@@ -1,15 +1,16 @@
 #!/bin/bash
 #
-# rc.firewall-0.29
+# rc.firewall-0.31
 # Linux/Netfilter firewall script.
 #
-# (c) 2004 by ingwar
+# (c) 2006 by ingwar
 # Distributed under the terms of GNU GPLv2 or later versions.
 #
 
 FW="/etc/firewall"
 INTERFACES="$FW/if"
 TARPIT="$FW/tarpit"
+TPORTS="$FW/tports"
 BLACKLIST="$FW/blacklist"
 HARDLIST="$FW/hardlist"
 SOFTLIST="$FW/softlist"
@@ -21,6 +22,7 @@ NOPASS="$FW/nopass"
 LOG="$FW/log"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
+MPORTS="$FW/mports"
 
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
@@ -77,6 +79,8 @@ mp() {
 }
 
 firewall_start() {
+
+  # filter table
 
   # interfaces
   if [ -r $INTERFACES ]; then
@@ -135,7 +139,7 @@ firewall_start() {
   CH1='CHECK'
   $IPT -N $CH1
   [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
-  $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
+  #$IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
 
   # known ICMP types accepted
   CH1='ICMP'
@@ -146,6 +150,19 @@ firewall_start() {
   $IPT -A $CH1 -p icmp --icmp-type time-exceeded -j ACCEPT
   [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
   $IPT -A $CH1 -j DROP
+
+  # tarpit: catch connections to these ports
+  if [ -r $TPORTS ]; then
+  CH1='TPORTS'
+  $IPT -N $CH1
+    if [ -r $TPORTS ]; then
+      F=$TPORTS mp
+      $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j TARPIT
+      $IPT -A $CH1 -p udp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j TARPIT
+    fi
+  fi
 
   # tarpit: catch connections from these hosts
   if [ -r $TARPIT ]; then
@@ -247,6 +264,9 @@ firewall_start() {
 
   # sanity check first
   $IPT -A $CH1 -j CHECK
+
+  # catch connections to theses ports
+  [[ -r $TPORTS ]] && $IPT -A $CH1 -j TPORTS
 
   # catch connections from theses hosts
   [[ -r $TARPIT ]] && $IPT -A $CH1 -j CATCH
@@ -451,7 +471,9 @@ firewall_start() {
 
     # accept packets to internal hosts on chosen ports
     F=$PASS mp
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH2: "
     [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "$CH2: "
     [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
 
     # accept ICMP
@@ -499,12 +521,58 @@ firewall_start() {
 
   fi
 
+  # nat table
+
   # postrouting chain, always exists
   CH1='POSTROUTING'
 
   # masquerade on chosen interfaces
   for IF in ${IF_MASQ[@]}; do
     [[ -n $IF ]] && $IPT -t nat -A $CH1 -o $IF -j MASQUERADE
+  done
+
+  # mangle table
+
+  # mangling for outgoing packets
+  CH1='OUTPUT'
+  
+  flag=0
+  for str in `cat $MPORTS`; do
+
+    # parse two-column table in config file
+    if [ $flag == 0 ]; then
+      PORT=`expr "$str" : '\(.*\)\/'`
+      PROTO=`expr "$str" : '.*\/\(.*\)'`
+      flag=1
+    else
+      MARK=$str
+      if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+        $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+      fi
+      flag=0
+    fi
+
+  done
+
+  # mangling for forwarded packets
+  CH1='PREROUTING'
+  
+  flag=0
+  for str in `cat $MPORTS`; do
+
+    # parse two-column table in config file
+    if [ $flag == 0 ]; then
+      PORT=`expr "$str" : '\(.*\)\/'`
+      PROTO=`expr "$str" : '.*\/\(.*\)'`
+      flag=1
+    else
+      MARK=$str
+      if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+        $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+      fi
+      flag=0
+    fi
+
   done
 
 }
