@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.31
+# rc.firewall-0.32
 # Linux/Netfilter firewall script.
 #
 # (c) 2006 by ingwar
@@ -536,44 +536,48 @@ firewall_start() {
   # mangling for outgoing packets
   CH1='OUTPUT'
   
-  flag=0
-  for str in `cat $MPORTS`; do
+  if [ -r $MPORTS ]; then
+    flag=0
+    for str in `cat $MPORTS`; do
 
-    # parse two-column table in config file
-    if [ $flag == 0 ]; then
-      PORT=`expr "$str" : '\(.*\)\/'`
-      PROTO=`expr "$str" : '.*\/\(.*\)'`
-      flag=1
-    else
-      MARK=$str
-      if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-        $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+      # parse two-column table in config file
+      if [ $flag == 0 ]; then
+        PORT=`expr "$str" : '\(.*\)\/'`
+        PROTO=`expr "$str" : '.*\/\(.*\)'`
+        flag=1
+      else
+        MARK=$str
+        if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+        fi
+        flag=0
       fi
-      flag=0
-    fi
 
-  done
+    done
+  fi
 
   # mangling for forwarded packets
   CH1='PREROUTING'
   
-  flag=0
-  for str in `cat $MPORTS`; do
+  if [ -r $MPORTS ]; then
+    flag=0
+    for str in `cat $MPORTS`; do
 
-    # parse two-column table in config file
-    if [ $flag == 0 ]; then
-      PORT=`expr "$str" : '\(.*\)\/'`
-      PROTO=`expr "$str" : '.*\/\(.*\)'`
-      flag=1
-    else
-      MARK=$str
-      if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-        $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+      # parse two-column table in config file
+      if [ $flag == 0 ]; then
+        PORT=`expr "$str" : '\(.*\)\/'`
+        PROTO=`expr "$str" : '.*\/\(.*\)'`
+        flag=1
+      else
+        MARK=$str
+        if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+        fi
+        flag=0
       fi
-      flag=0
-    fi
 
-  done
+    done
+  fi
 
 }
 
