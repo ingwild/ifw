@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# rc.firewall-0.32
+# rc.firewall-0.33
 # Linux/Netfilter firewall script.
 #
-# (c) 2006 by ingwar
+# (c) 2003-2007 by ing@wild.in.ua
 # Distributed under the terms of GNU GPLv2 or later versions.
 #
 
@@ -408,7 +408,9 @@ firewall_start() {
 
     # don't forward packets from softlisted hosts on specified ports
     if [ -r $SOFTLIST ]; then
+      IFS=$'\t\n'
       for CIDR in `cat $SOFTLIST`; do
+        unset IFS
         if [ -r $NOPASS ]; then
           F=$NOPASS mp
           if [ -n "$MP_TCP" ]; then
@@ -450,7 +452,9 @@ firewall_start() {
 
     # don't forward packets to softlisted hosts on specified ports
     if [ -r $SOFTLIST ]; then
+      IFS=$'\t\n'
       for CIDR in `cat $SOFTLIST`; do
+        unset IFS
         if [ -r $NOPASS ]; then
           F=$NOPASS mp
           if [ -n "$MP_TCP" ]; then
