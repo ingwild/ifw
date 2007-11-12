@@ -1,10 +1,11 @@
 #!/bin/bash
 #
-# rc.firewall-0.33
-# Linux/Netfilter firewall script.
+# rc.firewall-0.34
+# Linux/Netfilter firewall script
 #
-# (c) 2003-2007 by ing@wild.in.ua
-# Distributed under the terms of GNU GPLv2 or later versions.
+# (c) 2003-2007 by ing at wild dot in dot ua
+#
+# Distributed under the terms of GNU GPLv2 or later versions
 #
 
 FW="/etc/firewall"
@@ -205,6 +206,8 @@ firewall_start() {
   # only accept packets from known MAC+IP pairs
   if [ -r $ETHER ]; then
     CH1='ETHER'
+    # allow DHCP
+    $IPT -i $IF -p udp --dport 67:68 --sport 67:68 -j ACCEPT
     $IPT -N $CH1
     flag=0
     for str in `cat $ETHER`; do
