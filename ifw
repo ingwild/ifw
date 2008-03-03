@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# rc.firewall-0.34
+# rc.firewall-0.35
 # Linux/Netfilter firewall script
 #
-# (c) 2003-2007 by ing at wild dot in dot ua
+# (c) 2003-2008 by ing at wild dot in dot ua
 #
 # Distributed under the terms of GNU GPLv2 or later versions
 #
@@ -15,6 +15,7 @@ TPORTS="$FW/tports"
 BLACKLIST="$FW/blacklist"
 HARDLIST="$FW/hardlist"
 SOFTLIST="$FW/softlist"
+WHITELIST="$FW/whitelist"
 DNAT="$FW/dnat"
 ETHER="$FW/ethers"
 OPEN="$FW/open"
@@ -177,6 +178,17 @@ firewall_start() {
     done
   fi
 
+  # whitelist: hosts, allowed to connect and fowrard, overriding blacklist
+  if [ -r $WHITELIST ]; then
+    CH1='WHITELIST'
+    $IPT -N $CH1
+    for CIDR in `cat $WHITELIST`; do
+      if [ -n $CIDR ]; then
+        $IPT -A $CH1 -s $CIDR -j ACCEPT
+      fi
+    done
+  fi
+
   # blacklist: hosts, not allowed to connect or forward
   if [ -r $BLACKLIST ]; then
     CH1='BLACKLIST'
@@ -274,6 +286,9 @@ firewall_start() {
   # catch connections from theses hosts
   [[ -r $TARPIT ]] && $IPT -A $CH1 -j CATCH
 
+  # allow pockects from whitelisted hosts
+  [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
+
   # deny pockects from blacklisted hosts
   [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
@@ -334,6 +349,9 @@ firewall_start() {
   # accept all loopback packets
   $IPT -A $CH1 -o lo -j ACCEPT
 
+  # allow packets to whitelisted hosts
+  [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
+
   # deny packets to blacklisted hosts
   [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
@@ -375,6 +393,9 @@ firewall_start() {
 
   # sanity check first
   $IPT -A $CH1 -j CHECK
+
+  # allow packets from whitelisted hosts
+  [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
 
   # deny packets from blacklisted hosts
   [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
