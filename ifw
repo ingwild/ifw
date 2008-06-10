@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.35
+# rc.firewall-0.36
 # Linux/Netfilter firewall script
 #
 # (c) 2003-2008 by ing at wild dot in dot ua
@@ -576,6 +576,7 @@ firewall_start() {
       else
         MARK=$str
         if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
           $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
         fi
         flag=0
@@ -599,6 +600,7 @@ firewall_start() {
       else
         MARK=$str
         if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
+          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
           $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
         fi
         flag=0
