@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.36
+# rc.firewall-0.37
 # Linux/Netfilter firewall script
 #
 # (c) 2003-2008 by ing at wild dot in dot ua
@@ -218,9 +218,9 @@ firewall_start() {
   # only accept packets from known MAC+IP pairs
   if [ -r $ETHER ]; then
     CH1='ETHER'
-    # allow DHCP
-    $IPT -i $IF -p udp --dport 67:68 --sport 67:68 -j ACCEPT
     $IPT -N $CH1
+    # allow DHCP
+    $IPT -A $CH1 -p udp --dport 67:68 --sport 67:68 -j ACCEPT
     flag=0
     for str in `cat $ETHER`; do
       if [ $flag == 0 ]; then
