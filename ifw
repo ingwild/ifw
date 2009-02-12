@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.37
+# rc.firewall-0.39
 # Linux/Netfilter firewall script
 #
 # (c) 2003-2008 by ing at wild dot in dot ua
@@ -187,6 +187,7 @@ firewall_start() {
     for CIDR in `cat $WHITELIST`; do
       if [ -n $CIDR ]; then
         $IPT -A $CH1 -s $CIDR -j ACCEPT
+        $IPT -A $CH1 -d $CIDR -j ACCEPT
       fi
     done
   fi
