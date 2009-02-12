@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rc.firewall-0.39
+# rc.firewall-0.37
 # Linux/Netfilter firewall script
 #
 # (c) 2003-2008 by ing at wild dot in dot ua
@@ -25,8 +25,6 @@ LOG="$FW/log"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
 MPORTS="$FW/mports"
-PEERS="$FW/peers"
-PPORTS="$FW/pports"
 
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
@@ -274,39 +272,6 @@ firewall_start() {
 
   fi
 
-  # allow inbound ports from some peers
-  if [ -r $PEERS ]; then
-    CH1='PEERS_IN'
-    $IPT -N $CH1
-    F=$PPORTS mp
-    for CIDR in `cat $PEERS`; do
-      if [ -n $CIDR ]; then
-        [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j RETURN
-        [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -s $CIDR -p udp -m multiport --dport $MP_UDP -j RETURN
-      fi
-    done
-    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j DENY
-    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j DENY
-  fi
-
-  # allow outbound ports to some peers
-  if [ -r $PEERS ]; then
-    CH1='PEERS_OUT'
-    $IPT -N $CH1
-    for CIDR in `cat $PEERS`; do
-      if [ -n $CIDR ]; then
-        [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j RETURN
-        [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -d $CIDR -p udp -m multiport --sport $MP_UDP -j RETURN
-      fi
-    done
-    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j DENY
-    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --sport $MP_UDP -j DENY
-  fi
-
   # input chain, always exists
   CH1='INPUT'
 
@@ -366,9 +331,6 @@ firewall_start() {
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
 
-    # allow inbound ports from some peers
-    [[ -r $PEERS ]] && $IPT -A $CH1 -j PEERS_IN
-
     # deny all the rest on this interface
     [[ $log -ge 1 ]] && $IPT -A $CH2 -j LOG --log-prefix "$CH2: "
     $IPT -A $CH2 -j DENY
@@ -414,9 +376,6 @@ firewall_start() {
 
     # count all packets to external interfaces
     [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_OUT
-
-    # allow outbound ports to some peers
-    [[ -r $PEERS ]] && $IPT -A $CH1 -j PEERS_OUT
 
     # accept all packets to external interfaces
     $IPT -A $CH2 -j ACCEPT
@@ -465,7 +424,7 @@ firewall_start() {
         if ([ -n $IF_B ] && [ $IF != $IF_O ]) && ([ $IF == $IF_B ] || [ $IF_O == $IF_B ]); then
           [[ $log -ge 1 ]] && $IPT -A $CH2 -o $IF_O -j LOG --log-prefix "BLIND: "
           $IPT -A $CH2 -o $IF_O -j DENY
-        fi
+	fi
       done
     done
 
@@ -605,7 +564,10 @@ firewall_start() {
 
   # mangling for outgoing packets
   CH1='OUTPUT'
-  
+
+  MARK='0x10'
+  #$IPT -t mangle -A $CH1 -m owner --uid-owner 81 -p tcp ! --sport 3128 -j MARK --set-mark $MARK
+ 
   if [ -r $MPORTS ]; then
     flag=0
     for str in `cat $MPORTS`; do
@@ -618,8 +580,8 @@ firewall_start() {
       else
         MARK=$str
         if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
-          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+          $IPT -t mangle -o ! eth2 -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
+          $IPT -t mangle -o ! eth2 -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
         fi
         flag=0
       fi
@@ -642,8 +604,8 @@ firewall_start() {
       else
         MARK=$str
         if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
-          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
+          $IPT -t mangle -i ! eth2 -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
+          $IPT -t mangle -i ! eth2 -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
         fi
         flag=0
       fi
