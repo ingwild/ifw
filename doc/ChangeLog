@@ -1,0 +1,77 @@
+0.38: Implemented PEERS_{IN,OUT} chains for peer-to-peer applications.
+      Whitespace cleanup.
+
+0.37: Implemented exceptions (!) in SOFTLIST.
+      Fixed DHCP.
+
+0.33: Implemented exceptions (!) in SOFTLIST.
+      More to come...
+
+0.32: Fixed mports bug.
+
+0.31: Implemented MPORTS chain.
+      Fixed TPORTS creation if respective config does not exist.
+      Updated README.
+
+0.30: Implemented TPORTS chain.
+
+0.29: Implemented TARPIT chain.
+
+0.28: Improved error reporting.
+      Changed variable naming to 3-level structure.
+      Double quotes removed in places where it unnecessary.
+
+0.27: Implemented "blinded" internal interfaces,
+      isolated from other internal interfaces.
+
+0.26: Added ICMP chain to allow only certain ICMP types.
+
+0.25: Implemented conditional logging, flag file "log" added.
+      Spelling and grammar fixes.
+
+0.24: Major config changes: {tcp,udp}_{ok,fw,nofw} pairs merged
+      into single files (open, pass, nopass), syntax changed.
+      Changed nofw_hard to hardlist, nofw_soft to softlist.
+      Interfaces config files merged info single file "if", syntax changed.
+      Added comments.
+
+0.23: Implemented DNAT translation table.
+      Added config file "dnat".
+      Minor bugfix in POSTROUTING chain.
+
+0.22: Implemented MAC+IP access control for hosts from LAN.
+      Implemented debug mode.
+      Removed double checking in BLACKLIST chain.
+      Moved NOFW_HARD chain definition up.
+      Split out "Release History" to ChangeLog.
+      Moved "Config files" to README.
+      Simplified sanity checking.
+      Removed all tabs.
+
+0.21: Implemented conditional noULOGing.
+      Added config file "noulog".
+
+0.20: ULOGing made conditional. Added "ulog" flag file.
+      Removed *_lo chains for loopback interface,
+      moved loopback traffic directly to upper chains.
+      Prevented BLACKLIST and NOFW_HARD chains from creating,
+      if respective config files does not exist.
+      "Release history" added.
+
+0.19: Embeded NOFW_SOFT into FORWARD chain.
+      Simplified NOFW_SOFT rules.
+      Tested and verified ULOG accuracy.
+
+0.18: Optimisations and cleanups.
+      Some condition checking to simplify configuring.
+
+0.17: Implemented mp() function for config file parsing.
+      Removed redundant code.
+      Shortened variables' names.
+      Documented config files.
+
+0.16: Implemented logging with chain name for any dropped/rejected packet.
+      Fixed some --log-prefix bugs.
+
+0.15: Initial public version. Clean and simple.
+
