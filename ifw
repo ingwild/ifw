@@ -406,7 +406,6 @@ firewall_start() {
   [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
 
   # deny packets to blacklisted hosts
-  [[ -r $BLACKMAC ]] && $IPT -A $CH1 -j BLACKMAC
   [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
