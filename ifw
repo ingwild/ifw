@@ -17,6 +17,7 @@ BLACKLIST="$FW/blacklist"
 HARDLIST="$FW/hardlist"
 SOFTLIST="$FW/softlist"
 WHITELIST="$FW/whitelist"
+WHITELIST="$FW/whiteports"
 DNAT="$FW/dnat"
 ETHER="$FW/ethers"
 OPEN="$FW/open"
@@ -158,8 +159,8 @@ firewall_start() {
 
   # tarpit: catch connections to these ports
   if [ -r $TPORTS ]; then
-  CH1='TPORTS'
-  $IPT -N $CH1
+    CH1='TPORTS'
+    $IPT -N $CH1
     if [ -r $TPORTS ]; then
       F=$TPORTS mp
       $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
@@ -450,7 +451,7 @@ firewall_start() {
   # sanity check first
   $IPT -A $CH1 -j CHECK
 
-  # allow packets from whitelisted hosts
+  # allow packets from whitelisted hosts and ports
   [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
 
   # deny packets from blacklisted hosts
@@ -483,6 +484,15 @@ firewall_start() {
         fi
       done
     done
+
+    # forward transparent ports, if any
+    if [ -r $WHITEPORTS ]; then
+      F=$WHITEPORTS mp
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --sport $MP_TCP -j ACCEPT
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --sport $MP_UDP -j ACCEPT
+    fi
 
     # don't forward packets from hardlisted hosts
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
