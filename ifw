@@ -29,6 +29,7 @@ NOULOG="$FW/noulog"
 MPORTS="$FW/mports"
 PEERS="$FW/peers"
 PPORTS="$FW/pports"
+NOWHITE="$FW/nowhite"
 
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
@@ -188,8 +189,16 @@ firewall_start() {
     $IPT -N $CH1
     for CIDR in `cat $WHITELIST`; do
       if [ -n $CIDR ]; then
-        $IPT -A $CH1 -s $CIDR -j ACCEPT
-        $IPT -A $CH1 -d $CIDR -j ACCEPT
+        if [ -r $NOWHITE ]; then
+          F=$NOWHITE mp
+          [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j DENY
+          [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j DENY
+          [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -s $CIDR -p udp -m multiport --dport $MP_UDP -j DENY
+          [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -d $CIDR -p udp -m multiport --sport $MP_UDP -j DENY
+        else
+          $IPT -A $CH1 -s $CIDR -j ACCEPT
+          $IPT -A $CH1 -d $CIDR -j ACCEPT
+        fi
       fi
     done
   fi
