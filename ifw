@@ -147,6 +147,10 @@ firewall_start() {
   $IPT -N $CH1
   [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
   #$IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
+  #$IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j LOG --log-prefix "$CH1: Stealth scan"
+  $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j DROP
 
   # known ICMP types accepted
   CH1='ICMP'
