@@ -3,7 +3,7 @@
 # ing's firewall
 # Linux/Netfilter firewall script
 #
-# (c) 2003-2009 by ing at wild dot in dot ua
+# (c) 2003-2010 by ing at wild dot in dot ua
 #
 # Distributed under the terms of GNU GPLv3
 #
@@ -145,11 +145,9 @@ firewall_start() {
   # sanity check, filter strange packets
   CH1='CHECK'
   $IPT -N $CH1
-  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
-  #$IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
-  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1: "
-  #$IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
-  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j LOG --log-prefix "$CH1: Stealth scan"
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1 (strange): "
+  $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j LOG --log-prefix "$CH1 (FIN scan): "
   $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j DROP
 
   # known ICMP types accepted
