@@ -3,7 +3,7 @@
 # ing's firewall
 # Linux/Netfilter firewall script
 #
-# (c) 2003-2010 by ing at wild dot in dot ua
+# (c) 2003-2014 by ing at wild dot in dot ua
 #
 # Distributed under the terms of GNU GPLv3
 #
@@ -36,8 +36,10 @@ DUMPFILE="/var/log/iptables.dump"
 
 if [ "$2" == "debug" ]; then
   IPT="echo iptables"
+  IPS='echo ipset'
 else
   IPT="iptables"
+  IPS="ipset"
 fi
 
 if [ -r $LOG ]; then
@@ -299,37 +301,44 @@ firewall_start() {
 
   fi
 
-  # allow inbound ports from some peers
   if [ -r $PEERS ]; then
+
+    # common ipset for PEERS_IN and PEERS_OUT
+    SET='PEERS'
+    ipset restore < /etc/ipset.dump
+    #$IPS create $SET hash:net
+    #for CIDR in `cat $PEERS`; do
+    #  if [ -n $CIDR ]; then
+    #    $IPS add $SET $CIDR
+    #  fi
+    #done
+
+    F=$PPORTS mp
+
+    # deny inbound ports from some peers
+
     CH1='PEERS_IN'
     $IPT -N $CH1
-    F=$PPORTS mp
-    for CIDR in `cat $PEERS`; do
-      if [ -n $CIDR ]; then
-        [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j RETURN
-        [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -s $CIDR -p udp -m multiport --dport $MP_UDP -j RETURN
-      fi
-    done
-    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j DENY
-    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j DENY
-  fi
 
-  # allow outbound ports to some peers
-  if [ -r $PEERS ]; then
+    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j DENY
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
+    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m multiport --dport $MP_TCP -j DENY
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j ACCEPT
+
+    # deny outbound ports to some peers
+
     CH1='PEERS_OUT'
     $IPT -N $CH1
-    for CIDR in `cat $PEERS`; do
-      if [ -n $CIDR ]; then
-        [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j RETURN
-        [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -d $CIDR -p udp -m multiport --sport $MP_UDP -j RETURN
-      fi
-    done
-    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j DENY
-    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "$CH1: "
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --sport $MP_UDP -j DENY
+
+    [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "$CH1: "
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j DENY
+    [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j ACCEPT
+    [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m multiport --sport $MP_TCP -j LOG --log-prefix "$CH1: "
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m multiport --sport $MP_TCP -j DENY
+    [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --sport $MP_UDP -j ACCEPT
+
   fi
 
   # input chain, always exists
@@ -392,8 +401,8 @@ firewall_start() {
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
 
-    # allow inbound ports from some peers
-    [[ -r $PEERS ]] && $IPT -A $CH1 -j PEERS_IN
+    # filter inbound ports from some peers
+    [[ -r $PEERS ]] && $IPT -A $CH2 -j PEERS_IN
 
     # deny all the rest on this interface
     [[ $log -ge 1 ]] && $IPT -A $CH2 -j LOG --log-prefix "$CH2: "
@@ -441,8 +450,8 @@ firewall_start() {
     # count all packets to external interfaces
     [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_OUT
 
-    # allow outbound ports to some peers
-    [[ -r $PEERS ]] && $IPT -A $CH1 -j PEERS_OUT
+    # filter outbound ports to some peers
+    [[ -r $PEERS ]] && $IPT -A $CH2 -j PEERS_OUT
 
     # accept all packets to external interfaces
     $IPT -A $CH2 -j ACCEPT
@@ -702,6 +711,9 @@ firewall_stop() {
   $IPT -P INPUT ACCEPT
   $IPT -P OUTPUT ACCEPT
   $IPT -P FORWARD ACCEPT
+
+  # remove all ipsets
+  $IPS destroy
 
 }
 
