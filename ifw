@@ -97,14 +97,14 @@ ipset_start() {
 
     [[ ! -r $LIST ]] && continue
 
-    if [[ -r $DUMP ]] && [[ $DEBUG == 0 ]]; then
+    if [[ -r $DUMP ]] && [[ $DUMP -nt $LIST ]] && [[ $DEBUG == 0 ]] ; then
 
-      # Dump present, no debug: restore ipset, quick
+      # Dump readable and newer than list, no debug: quick
       $IPS restore < $DUMP
 
     else
 
-      # Create ipset, slow
+      # Create ipset: slow
       $IPS create $SET hash:net
       for CIDR in `cat $LIST`; do
         if [ -n $CIDR ]; then
@@ -112,8 +112,8 @@ ipset_start() {
         fi
       done
 
-      # Save created ipset for future runs
-      [[ ! -r $DUMP ]] && [[ $DEBUG == 0 ]] && $IPS save $SET > $DUMP
+      # Dumpr for future runs, no debug
+      [[ $DEBUG == 0 ]] && $IPS save $SET > $DUMP
 
     fi
 
