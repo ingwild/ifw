@@ -99,7 +99,8 @@ ipset_start() {
 
     if [[ -r $DUMP ]] && [[ $DUMP -nt $LIST ]] && [[ $DEBUG == 0 ]] ; then
 
-      # Dump readable and newer than list, no debug: quick
+      # It's much quicker to restore from dump
+      # if it's readable and newer than list
       $IPS restore < $DUMP
 
     else
@@ -112,7 +113,7 @@ ipset_start() {
         fi
       done
 
-      # Dumpr for future runs, no debug
+      # Save dump for future runs if no debug
       [[ $DEBUG == 0 ]] && $IPS save $SET > $DUMP
 
     fi
