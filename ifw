@@ -27,7 +27,6 @@ LOG="$FW/log"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
 MPORTS="$FW/mports"
-PEERS="$FW/peers"
 PPORTS="$FW/pports"
 NOWHITE="$FW/nowhite"
 
@@ -35,9 +34,11 @@ DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
 
 if [ "$2" == "debug" ]; then
+  DEBUG=1
   IPT="echo iptables"
   IPS='echo ipset'
 else
+  DEBUG=0
   IPT="iptables"
   IPS="ipset"
 fi
@@ -84,6 +85,47 @@ mp() {
       esac
     done
   fi
+
+}
+
+ipset_start() {
+
+  for SET in PEERS ; do
+
+    LIST="$FW/"${SET,,}
+    DUMP="$LIST.dump"
+
+    [[ ! -r $LIST ]] && continue
+
+    if [[ -r $DUMP ]] && [[ $DEBUG == 0 ]]; then
+
+      # Dump present, no debug: restore ipset, quick
+      $IPS restore < $DUMP
+
+    else
+
+      # Create ipset, slow
+      $IPS create $SET hash:net
+      for CIDR in `cat $LIST`; do
+        if [ -n $CIDR ]; then
+          $IPS add $SET $CIDR
+        fi
+      done
+
+      # Save created ipset for future runs
+      [[ ! -r $DUMP ]] && [[ $DEBUG == 0 ]] && $IPS save $SET > $DUMP
+
+    fi
+
+  done
+
+}
+
+
+ipset_stop() {
+
+  # remove all ipsets
+  $IPS destroy
 
 }
 
@@ -303,16 +345,7 @@ firewall_start() {
 
   if [ -r $PEERS ]; then
 
-    # common ipset for PEERS_IN and PEERS_OUT
     SET='PEERS'
-    ipset restore < /etc/ipset.dump
-    #$IPS create $SET hash:net
-    #for CIDR in `cat $PEERS`; do
-    #  if [ -n $CIDR ]; then
-    #    $IPS add $SET $CIDR
-    #  fi
-    #done
-
     F=$PPORTS mp
 
     # deny inbound ports from some peers
@@ -712,9 +745,6 @@ firewall_stop() {
   $IPT -P OUTPUT ACCEPT
   $IPT -P FORWARD ACCEPT
 
-  # remove all ipsets
-  $IPS destroy
-
 }
 
 firewall_status() {
@@ -729,15 +759,19 @@ firewall_status() {
 case "$1" in
 
   start)
+    ipset_start
     firewall_start
     ;;
 
   stop)
     firewall_stop
+    ipset_stop
     ;;
 
   restart)
     firewall_stop
+    ipset_stop
+    ipset_start
     firewall_start
     ;;
 
