@@ -90,7 +90,7 @@ mp() {
 
 ipset_start() {
 
-  for SET in WHITELIST BLACKLIST PEERS ; do
+  for SET in WHITELIST BLACKLIST HARDLIST THOSTS PEERS ; do
 
     LIST="$FW/"${SET,,}
     DUMP="$LIST.dump"
@@ -222,12 +222,9 @@ firewall_start() {
   if [ -r $THOSTS ]; then
     CH1='THOSTS'
     $IPT -N $CH1
-    for CIDR in `cat $THOSTS`; do
-      if [ -n $CIDR ]; then
-        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -p tcp -j LOG --log-prefix "$CH1: "
-        $IPT -A $CH1 -s $CIDR -p tcp -j TARPIT
-      fi
-    done
+    SET='THOSTS'
+    [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -j LOG --log-prefix "$CH1: "
+    $IPT -A $CH1 -m set --match-set $SET src -p tcp -j TARPIT
   fi
 
   # whitelist: hosts, allowed to connect and fowrard, overriding blacklist
@@ -272,14 +269,11 @@ firewall_start() {
   if [ -r $HARDLIST ]; then
     CH1='HARDLIST'
     $IPT -N $CH1
-    for CIDR in `cat $HARDLIST`; do
-      if [ -n $CIDR ]; then
-        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -j LOG --log-prefix "$CH1: "
-        $IPT -A $CH1 -s $CIDR -j DENY
-        [[ $log -ge 1 ]] && $IPT -A $CH1 -d $CIDR -j LOG --log-prefix "$CH1: "
-        $IPT -A $CH1 -d $CIDR -j DENY
-      fi
-    done
+    SET='HARDLIST'
+    [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -j LOG --log-prefix "$CH1: "
+    $IPT -A $CH1 -m set --match-set $SET src -j DENY
+    [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -j LOG --log-prefix "$CH1: "
+    $IPT -A $CH1 -m set --match-set $SET dst -j DENY
   fi
 
   # only accept packets from known MAC+IP pairs
