@@ -90,7 +90,7 @@ mp() {
 
 ipset_start() {
 
-  for SET in PEERS ; do
+  for SET in WHITELIST BLACKLIST PEERS ; do
 
     LIST="$FW/"${SET,,}
     DUMP="$LIST.dump"
@@ -233,20 +233,17 @@ firewall_start() {
   if [ -r $WHITELIST ]; then
     CH1='WHITELIST'
     $IPT -N $CH1
-    for CIDR in `cat $WHITELIST`; do
-      if [ -n $CIDR ]; then
-        if [ -r $NOWHITE ]; then
-          F=$NOWHITE mp
-          [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j DENY
-          [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j DENY
-          [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -s $CIDR -p udp -m multiport --dport $MP_UDP -j DENY
-          [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -d $CIDR -p udp -m multiport --sport $MP_UDP -j DENY
-        else
-          $IPT -A $CH1 -s $CIDR -j ACCEPT
-          $IPT -A $CH1 -d $CIDR -j ACCEPT
-        fi
-      fi
-    done
+    SET='WHITELIST'
+    if [ -r $NOWHITE ]; then
+      F=$NOWHITE mp
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j DENY
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j DENY
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m multiport --dport $MP_UDP -j DENY
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m multiport --sport $MP_UDP -j DENY
+    else
+      $IPT -A $CH1 -m set --match-set $SET src -j ACCEPT
+      $IPT -A $CH1 -m set --match-set $SET dst -j ACCEPT
+    fi
   fi
 
   # MAC based blacklist: hosts, not allowed to connect or forward
@@ -265,12 +262,9 @@ firewall_start() {
   if [ -r $BLACKLIST ]; then
     CH1='BLACKLIST'
     $IPT -N $CH1
-    for CIDR in `cat $BLACKLIST`; do
-      if [ -n $CIDR ]; then
-        [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -j LOG --log-prefix "$CH1: "
-        $IPT -A $CH1 -s $CIDR -j DENY
-      fi
-    done
+    SET='BLACKLIST'
+    [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -j LOG --log-prefix "$CH1: "
+    $IPT -A $CH1 -m set --match-set $SET src -j DENY
   fi
 
   # hardlist: hosts, not allowed to forward
