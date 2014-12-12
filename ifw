@@ -10,7 +10,7 @@
 
 FW="/etc/firewall"
 INTERFACES="$FW/if"
-TARPIT="$FW/tarpit"
+THOSTS="$FW/thosts"
 TPORTS="$FW/tports"
 BLACKMAC="$FW/blackmac"
 BLACKLIST="$FW/blacklist"
@@ -205,24 +205,24 @@ firewall_start() {
   [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
   $IPT -A $CH1 -j DROP
 
-  # tarpit: catch connections to these ports
+  # Catch connections to these ports
   if [ -r $TPORTS ]; then
     CH1='TPORTS'
     $IPT -N $CH1
     if [ -r $TPORTS ]; then
       F=$TPORTS mp
-      $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
       [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j TARPIT
-      $IPT -A $CH1 -p udp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
+      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
       [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j TARPIT
     fi
   fi
 
-  # tarpit: catch connections from these hosts
-  if [ -r $TARPIT ]; then
-    CH1='CATCH'
+  # Catch connections from these hosts
+  if [ -r $THOSTS ]; then
+    CH1='THOSTS'
     $IPT -N $CH1
-    for CIDR in `cat $TARPIT`; do
+    for CIDR in `cat $THOSTS`; do
       if [ -n $CIDR ]; then
         [[ $log -ge 1 ]] && $IPT -A $CH1 -s $CIDR -p tcp -j LOG --log-prefix "$CH1: "
         $IPT -A $CH1 -s $CIDR -p tcp -j TARPIT
@@ -382,7 +382,7 @@ firewall_start() {
   [[ -r $TPORTS ]] && $IPT -A $CH1 -j TPORTS
 
   # catch connections from theses hosts
-  [[ -r $TARPIT ]] && $IPT -A $CH1 -j CATCH
+  [[ -r $THOSTS ]] && $IPT -A $CH1 -j THOSTS
 
   # allow pockects from whitelisted hosts
   [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
