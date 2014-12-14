@@ -90,7 +90,7 @@ mp() {
 
 ipset_start() {
 
-  for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEERS ; do
+  for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEERS NOULOG ; do
 
     LIST="$FW/"${SET,,}
     DUMP="$LIST.dump"
@@ -302,16 +302,14 @@ firewall_start() {
   # packet counter
   if [ -r $ULOG ]; then
 
+    SET='NOULOG'
+
     # incoming packets counter
     CH1='ULOG_IN'
     $IPT -N $CH1
 
     # do not count packets from hosts-exceptions
-    if [ -r $NOULOG ]; then
-      for CIDR in `cat $NOULOG`; do
-        [[ -n $CIDR ]] && $IPT -A $CH1 -s $CIDR -j RETURN
-      done
-    fi
+    [[ -r $NOULOG ]] && $IPT -A $CH1 -m set --match-set $SET src -j RETURN
 
     # count these packets as incoming
     $IPT -A $CH1 -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
@@ -321,11 +319,7 @@ firewall_start() {
     $IPT -N $CH1
 
     # do not count packets to hosts-exceptions
-    if [ -r $NOULOG ]; then
-      for CIDR in `cat $NOULOG`; do
-        [[ -n $CIDR ]] && $IPT -A $CH1 -d $CIDR -j RETURN
-      done
-    fi
+    [[ -r $NOULOG ]] && $IPT -A $CH1 -m set --match-set $SET dst -j RETURN
 
     # count these packets as outgoing
     $IPT -A $CH1 -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
