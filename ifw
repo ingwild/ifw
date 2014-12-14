@@ -90,7 +90,7 @@ mp() {
 
 ipset_start() {
 
-  for SET in WHITELIST BLACKLIST HARDLIST THOSTS PEERS ; do
+  for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEERS ; do
 
     LIST="$FW/"${SET,,}
     DUMP="$LIST.dump"
@@ -540,22 +540,13 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets from softlisted hosts on specified ports
-    if [ -r $SOFTLIST ]; then
-      IFS=$'\t\n'
-      for CIDR in `cat $SOFTLIST`; do
-        unset IFS
-        if [ -r $NOPASS ]; then
-          F=$NOPASS mp
-          if [ -n "$MP_TCP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A $CH2 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A $CH2 -s $CIDR -p tcp -m multiport --dport $MP_TCP -j DENY
-          fi
-          if [ -n "$MP_UDP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A $CH2 -s $CIDR -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A $CH2 -s $CIDR -p udp -m multiport --dport $MP_UDP -j DENY
-          fi
-        fi
-      done
+    if [ -r $SOFTLIST ] && [ -r $NOPASS ] ; then
+      SET='SOFTLIST'
+      F=$NOPASS mp
+      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j DENY
+      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m multiport --dport $MP_UDP -j DENY
     fi
 
     # deny packets from unknown MAC+IP pairs
@@ -584,22 +575,13 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets to softlisted hosts on specified ports
-    if [ -r $SOFTLIST ]; then
-      IFS=$'\t\n'
-      for CIDR in `cat $SOFTLIST`; do
-        unset IFS
-        if [ -r $NOPASS ]; then
-          F=$NOPASS mp
-          if [ -n "$MP_TCP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A $CH2 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A $CH2 -d $CIDR -p tcp -m multiport --sport $MP_TCP -j DENY
-          fi
-          if [ -n "$MP_UDP" ]; then
-            [[ $log -ge 1 ]] && $IPT -A $CH2 -d $CIDR -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-            $IPT -A $CH2 -d $CIDR -p udp -m multiport --sport $MP_UDP -j DENY
-          fi
-        fi
-      done
+    if [[ -r $SOFTLIST ]] && [[ -r $NOPASS ]] ; then
+      SET='SOFTLIST'
+      F=$NOPASS mp
+      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
+      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j DENY
+      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
+      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m multiport --sport $MP_UDP -j DENY
     fi
 
     # accept established connections
