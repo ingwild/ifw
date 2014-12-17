@@ -33,6 +33,11 @@ NOWHITE="$FW/nowhite"
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
 
+errcho() {
+  echo "$@" 1>&2
+  exit 1
+}
+
 if [ "$2" == "debug" ]; then
   DEBUG=1
   IPT="echo iptables"
@@ -75,12 +80,10 @@ mp() {
         fi
         ;;
       '')
-        echo "Empty protocol in $F." >&2
-        exit 1
+        errcho "Empty protocol in $F."
         ;;
       *)
-        echo "Unknown protocol \"$PROTO\" in $F." >&2
-        exit 1
+        errcho "Unknown protocol \"$PROTO\" in $F."
         ;;
       esac
     done
@@ -158,8 +161,7 @@ firewall_start() {
             IF_BLIND[${#IF_BLIND[@]}+1]=$IF
             ;;
           *)
-            echo "Unknown type \"$TYPE\" for interface \"$IF\"." >&2
-            exit 1
+            errcho "Unknown type \"$TYPE\" for interface \"$IF\"."
             ;;
           esac
         fi
@@ -167,12 +169,10 @@ firewall_start() {
       fi
     done
   else
-    echo "Can not open config file: $INTERFACES"
-    exit 1
+    errcho "Can not open config file: $INTERFACES"
   fi
   if [ ${#IF_EXT[@]} -lt 1 ] && [ ${#IF_INT[@]} -lt 1 ]; then
-    echo "No external or internal interfaces found. Check $INTERFACES"
-    exit 1
+    errcho "No external or internal interfaces found. Check $INTERFACES"
   fi
 
   # default policy is to drop everything
@@ -749,8 +749,7 @@ case "$1" in
     ;;
 
   *)
-    echo "usage: $0 {start|stop|restart|status|dump} [debug]" >&2
-    exit 1
+    errcho "usage: $0 {start|stop|restart|status|dump} [debug]"
     ;;
 
 esac
