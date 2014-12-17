@@ -10,28 +10,38 @@
 
 FW="/etc/firewall"
 INTERFACES="$FW/if"
+PORTS="$FW/ports"
+
 THOSTS="$FW/thosts"
-TPORTS="$FW/tports"
 BLACKMAC="$FW/blackmac"
 BLACKLIST="$FW/blacklist"
 HARDLIST="$FW/hardlist"
 SOFTLIST="$FW/softlist"
 WHITELIST="$FW/whitelist"
-WHITEPORTS="$FW/whiteports"
 DNAT="$FW/dnat"
 ETHER="$FW/ethers"
-OPEN="$FW/open"
-PASS="$FW/pass"
-NOPASS="$FW/nopass"
 LOG="$FW/log"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
-MPORTS="$FW/mports"
 PPORTS="$FW/pports"
+
+WHITEPORTS="$FW/whiteports"
 NOWHITE="$FW/nowhite"
+PASS="$FW/pass"
+NOPASS="$FW/nopass"
+MPORTS="$FW/mports"
 
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
+
+# Port listings
+declare -a T=( open pass nopass white nowhite mark peer tarpit )
+declare -A TSTATUS
+
+errcho() {
+  echo "$@" 1>&2
+  exit 1
+}
 
 if [ "$2" == "debug" ]; then
   DEBUG=1
@@ -88,7 +98,83 @@ mp() {
 
 }
 
-ipset_start() {
+port_start() {
+
+  if [ ! -r $PORTS ]; then
+    errcho "Config file is not readable! ($PORTS)"
+  fi
+
+  for PTYPE in ${T[@]}; do
+    TSTATUS[$PTYPE"_tcp"]=0
+    TSTATUS[$PTYPE"_udp"]=0
+  done
+
+  i=1
+
+  IFS='
+'
+  for str in `cat $PORTS`; do
+
+    IFS='/ 	' read PORT PROTO TYPE <<<$str
+    unset IFS
+
+    if [ -z "$PORT" ]; then
+      errcho "$PORTS: line $i: Emtpy port number!"
+    elif [[ ! "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" == 0 ] || [ "$PORT" -gt 65535 ]; then
+      errcho "$PORTS: line $i: Invalid port number! ($PORT)"
+    fi
+
+    if [ -z "$PROTO" ]; then
+      errcho "$PORTS: line $i: Emtpy protocol!"
+    elif [ "$PROTO" != 'tcp' ] && [ "$PROTO" != 'udp' ]; then
+      errcho "$PORTS: line $i: Unknown protocol! ($PROTO)"
+    fi
+
+    if [ -z "$TYPE" ]; then
+      errcho "$PORTS: line $i: Emtpy port type!"
+    else
+      MATCH=0
+      for PTYPE in ${T[@]}; do
+        if [ $TYPE == $PTYPE ]; then
+          MATCH=1 
+        fi
+      done
+      if [ ! $MATCH == 1 ]; then
+        errcho "$PORTS: line $i: Unknown port type! ($TYPE)"
+      fi
+    fi
+
+    SET=$TYPE"_$PROTO"
+
+    if [ ${TSTATUS[$SET]} == 0 ]; then
+      $IPS create $SET bitmap:port range 0-65535
+      TSTATUS[$SET]=1
+    fi
+
+    if [ ${TSTATUS[$SET]} == 1 ]; then
+      $IPS add $SET $PORT
+    fi
+
+    i=$(($i+1))
+
+  done
+
+  unset IFS
+
+}
+
+port_stop() {
+
+  for PTYPE in ${T[@]}; do
+    if [ "${TSTATUS[$PTYPE]}" == 1 ]; then
+      SET="ports_"$PTYPE
+      $IPS destroy $SET
+    fi
+  done
+
+}
+
+list_start() {
 
   for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEERS NOULOG ; do
 
@@ -123,7 +209,7 @@ ipset_start() {
 }
 
 
-ipset_stop() {
+list_stop() {
 
   # remove all ipsets
   $IPS destroy
@@ -204,19 +290,6 @@ firewall_start() {
   $IPT -A $CH1 -p icmp --icmp-type time-exceeded -j ACCEPT
   [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
   $IPT -A $CH1 -j DROP
-
-  # Catch connections to these ports
-  if [ -r $TPORTS ]; then
-    CH1='TPORTS'
-    $IPT -N $CH1
-    if [ -r $TPORTS ]; then
-      F=$TPORTS mp
-      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
-      [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --dport $MP_TCP -j TARPIT
-      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH1: "
-      [[ -n "$MP_UDP" ]] && $IPT -A $CH1 -p udp -m multiport --dport $MP_UDP -j TARPIT
-    fi
-  fi
 
   # Catch connections from these hosts
   if [ -r $THOSTS ]; then
@@ -366,14 +439,17 @@ firewall_start() {
   # sanity check first
   $IPT -A $CH1 -j CHECK
 
+  # allow pockects from whitelisted hosts
+  [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
+
   # catch connections to theses ports
-  [[ -r $TPORTS ]] && $IPT -A $CH1 -j TPORTS
+  [ ${TSTATUS[tarpit_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j LOG --log-prefix "TARPIT: "
+  [ ${TSTATUS[tarpit_tcp]} == 1 ] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j TARPIT
+  [ ${TSTATUS[tarpit_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j LOG --log-prefix "TARPIT: "
+  [ ${TSTATUS[tarpit_udp]} == 1 ] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j TARPIT
 
   # catch connections from theses hosts
   [[ -r $THOSTS ]] && $IPT -A $CH1 -j THOSTS
-
-  # allow pockects from whitelisted hosts
-  [[ -r $WHITELIST ]] && $IPT -A $CH1 -j WHITELIST
 
   # deny pockects from blacklisted hosts
   [[ -r $BLACKMAC ]] && $IPT -A $CH1 -j BLACKMAC
@@ -408,11 +484,9 @@ firewall_start() {
     $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to open ports on this host
-    if [ -r $OPEN ]; then
-      F=$OPEN mp
-      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
-      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
-    fi
+
+    [ ${TSTATUS[open_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set open_tcp dst -j ACCEPT
+    [ ${TSTATUS[open_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set open_udp dst -j ACCEPT
 
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
@@ -724,19 +798,23 @@ firewall_status() {
 case "$1" in
 
   start)
-    ipset_start
+    list_start
+    port_start
     firewall_start
     ;;
 
   stop)
     firewall_stop
-    ipset_stop
+    port_stop
+    list_stop
     ;;
 
   restart)
     firewall_stop
-    ipset_stop
-    ipset_start
+    port_stop
+    list_stop
+    list_start
+    port_start
     firewall_start
     ;;
 
