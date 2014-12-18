@@ -58,43 +58,6 @@ else
   log=0
 fi
 
-# convert config file with ports list
-# to string accepted by multiport module
-mp() {
-
-  MP_TCP=
-  MP_UDP=
-  if [ -r $F ]; then
-    for str in `cat $F`; do
-      PORT=`expr "$str" : '\(.*\)\/'`
-      PROTO=`expr "$str" : '.*\/\(.*\)'`
-      case "$PROTO" in
-      'tcp')
-        if [ -z "$MP_TCP" ]; then
-          MP_TCP="$PORT"
-        else
-          MP_TCP="$MP_TCP,$PORT"
-        fi
-        ;;
-      'udp')
-        if [ -z "$MP_UDP" ]; then
-          MP_UDP="$PORT"
-        else
-          MP_UDP="$MP_UDP,$PORT"
-        fi
-        ;;
-      '')
-        errcho "Empty protocol in $F."
-        ;;
-      *)
-        errcho "Unknown protocol \"$PROTO\" in $F."
-        ;;
-      esac
-    done
-  fi
-
-}
-
 port_start() {
 
   if [ ! -r $PORTS ]; then
