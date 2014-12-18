@@ -190,9 +190,9 @@ firewall_start() {
   # sanity check, filter strange packets
   CH1='CHECK'
   $IPT -N $CH1
-  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1 (strange): "
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j LOG --log-prefix "$CH1""_BAD: "
   $IPT -A $CH1 -p tcp ! --syn -m state --state NEW -j DROP
-  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j LOG --log-prefix "$CH1 (FIN scan): "
+  [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j LOG --log-prefix "$CH1""_FIN_SCAN: "
   $IPT -A $CH1 -p tcp --tcp-flags ACK,FIN FIN -j DROP
 
   # known ICMP types accepted
