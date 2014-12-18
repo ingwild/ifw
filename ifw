@@ -25,9 +25,6 @@ ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
 PEER="$FW/peer"
 
-NOWHITE="$FW/nowhite"
-PASS="$FW/pass"
-NOPASS="$FW/nopass"
 MPORTS="$FW/mports"
 
 DATE=`date '+%Y%m%d%H%M%S'`
@@ -549,7 +546,7 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets from softlisted hosts on specified ports
-    if [ -r $SOFTLIST ] && [ -r $NOPASS ] ; then
+    if [ -r $SOFTLIST ] && [ ${TSTATUS[nopass_tcp]} == 1 -o ${TSTATUS[nopass_udp]} == 1 ]; then
       SET='SOFTLIST'
       [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j LOG --log-prefix "SOFTLIST: "
       [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j DENY
@@ -583,7 +580,7 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets to softlisted hosts on specified ports
-    if [[ -r $SOFTLIST ]] && [[ -r $NOPASS ]] ; then
+    if [ -r $SOFTLIST ] && [ ${TSTATUS[nopass_tcp]} == 1 -o ${TSTATUS[nopass_udp]} == 1 ]; then
       SET='SOFTLIST'
       [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j LOG --log-prefix "SOFTLIST: "
       [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j DENY
