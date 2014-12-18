@@ -23,7 +23,7 @@ ETHER="$FW/ethers"
 LOG="$FW/log"
 ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
-PPORTS="$FW/pports"
+PEERS="$FW/peers"
 
 NOWHITE="$FW/nowhite"
 PASS="$FW/pass"
@@ -397,7 +397,6 @@ firewall_start() {
 
     CH1='PEERS_OUT'
     $IPT -N $CH1
-
     [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "$CH1: "
     [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j DENY
     [[ -n "$MP_TCP" ]] && $IPT -A $CH1 -p tcp -m multiport --sport $MP_TCP -j ACCEPT
