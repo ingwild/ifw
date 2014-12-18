@@ -588,11 +588,10 @@ firewall_start() {
     # don't forward packets from softlisted hosts on specified ports
     if [ -r $SOFTLIST ] && [ -r $NOPASS ] ; then
       SET='SOFTLIST'
-      F=$NOPASS mp
-      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m multiport --dport $MP_TCP -j DENY
-      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m multiport --dport $MP_UDP -j DENY
+      [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j LOG --log-prefix "SOFTLIST: "
+      [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j DENY
+      [ ${TSTATUS[nopass_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j LOG --log-prefix "SOFTLIST: "
+      [ ${TSTATUS[nopass_udp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j DENY
     fi
 
     # deny packets from unknown MAC+IP pairs
@@ -623,11 +622,10 @@ firewall_start() {
     # don't forward packets to softlisted hosts on specified ports
     if [[ -r $SOFTLIST ]] && [[ -r $NOPASS ]] ; then
       SET='SOFTLIST'
-      F=$NOPASS mp
-      [[ -n "$MP_TCP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j LOG --log-prefix "SOFTLIST: "
-      [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m multiport --sport $MP_TCP -j DENY
-      [[ -n "$MP_UDP" ]] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m multiport --sport $MP_UDP -j LOG --log-prefix "SOFTLIST: "
-      [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m multiport --sport $MP_UDP -j DENY
+      [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j LOG --log-prefix "SOFTLIST: "
+      [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j DENY
+      [ ${TSTATUS[nopass_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j LOG --log-prefix "SOFTLIST: "
+      [ ${TSTATUS[nopass_udp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j DENY
     fi
 
     # accept established connections
@@ -635,11 +633,10 @@ firewall_start() {
     $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to internal hosts on chosen ports
-    F=$PASS mp
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j LOG --log-prefix "$CH2: "
-    [[ -n "$MP_TCP" ]] && $IPT -A $CH2 -p tcp -m multiport --dport $MP_TCP -j ACCEPT
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j LOG --log-prefix "$CH2: "
-    [[ -n "$MP_UDP" ]] && $IPT -A $CH2 -p udp -m multiport --dport $MP_UDP -j ACCEPT
+    [ ${TSTATUS[pass_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j LOG --log-prefix "$CH2: "
+    [ ${TSTATUS[pass_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j ACCEPT
+    [ ${TSTATUS[pass_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j LOG --log-prefix "$CH2: "
+    [ ${TSTATUS[pass_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j ACCEPT
 
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
