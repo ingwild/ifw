@@ -31,7 +31,7 @@ DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
 
 # Port listings
-declare -a T=( open pass nopass nowhite mark peer tarpit )
+declare -a T=( open pass nopass nowhite peer tarpit )
 declare -A TSTATUS
 
 errcho() {
@@ -88,28 +88,58 @@ port_start() {
     fi
 
     if [ -z "$TYPE" ]; then
+
       errcho "$PORTS: line $i: Emtpy port type!"
+
+    elif [[ $TYPE =~ 0x(.*) ]]; then
+
+      NUM=${BASH_REMATCH[1]}
+      SET=mark_$PROTO\_$NUM
+
+      DECLARED=0
+      for S in ${!mark_@}; do
+        [ $S == $SET ] && DECLARED=1
+      done
+
+      if [ $DECLARED == 0 ]; then
+        #declare -A $SET
+        $IPS create $SET bitmap:port range 0-65535
+      fi
+
+      let $(echo $SET[$PORT]=1)
+
+      $IPS add $SET $PORT
+
+      # Show all declared arrays
+      #echo DEBUG: ${!mark_@}
+      # Get value from array 
+      #let tmp=$(echo $SET[$PORT])
+
     else
+
       MATCH=0
+
       for PTYPE in ${T[@]}; do
         if [ $TYPE == $PTYPE ]; then
           MATCH=1 
         fi
       done
+
       if [ ! $MATCH == 1 ]; then
         errcho "$PORTS: line $i: Unknown port type! ($TYPE)"
       fi
-    fi
 
-    SET=$TYPE"_$PROTO"
+      SET=$TYPE"_$PROTO"
 
-    if [ ${TSTATUS[$SET]} == 0 ]; then
-      $IPS create $SET bitmap:port range 0-65535
-      TSTATUS[$SET]=1
-    fi
+      if [ ${TSTATUS[$SET]} == 0 ]; then
+        $IPS create $SET bitmap:port range 0-65535
+        TSTATUS[$SET]=1
+      fi
 
-    if [ ${TSTATUS[$SET]} == 1 ]; then
-      $IPS add $SET $PORT
+      if [ ${TSTATUS[$SET]} == 1 ]; then
+        $IPS add $SET $PORT
+      fi
+
     fi
 
     i=$(($i+1))
@@ -657,51 +687,23 @@ firewall_start() {
 
   # mangling for outgoing packets
   CH1='OUTPUT'
-  
-  if [ -r $MPORTS ]; then
-    flag=0
-    for str in `cat $MPORTS`; do
 
-      # parse two-column table in config file
-      if [ $flag == 0 ]; then
-        PORT=`expr "$str" : '\(.*\)\/'`
-        PROTO=`expr "$str" : '.*\/\(.*\)'`
-        flag=1
-      else
-        MARK=$str
-        if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
-          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
-        fi
-        flag=0
-      fi
-
-    done
-  fi
+  for SET in ${!mark_@}; do
+    PROTO=${SET:5:3}
+    MARK=${SET:9}
+    $IPT -t mangle -A $CH1 -p $PROTO -m set --match-set $SET dst -j MARK --set-xmark 0x$MARK
+    $IPT -t mangle -A $CH1 -p $PROTO -m set --match-set $SET src -j MARK --set-xmark 0x$MARK
+  done
 
   # mangling for forwarded packets
   CH1='PREROUTING'
   
-  if [ -r $MPORTS ]; then
-    flag=0
-    for str in `cat $MPORTS`; do
-
-      # parse two-column table in config file
-      if [ $flag == 0 ]; then
-        PORT=`expr "$str" : '\(.*\)\/'`
-        PROTO=`expr "$str" : '.*\/\(.*\)'`
-        flag=1
-      else
-        MARK=$str
-        if [ -n $PORT ] && [ -n $PROTO ] && [ -n $MARK ]; then
-          $IPT -t mangle -A $CH1 -p $PROTO --sport $PORT -j MARK --set-mark $MARK
-          $IPT -t mangle -A $CH1 -p $PROTO --dport $PORT -j MARK --set-mark $MARK
-        fi
-        flag=0
-      fi
-
-    done
-  fi
+  for SET in ${!mark_@}; do
+    PROTO=${SET:5:3}
+    MARK=${SET:9}
+    $IPT -t mangle -A $CH1 -p $PROTO -m set --match-set $SET src -j MARK --set-xmark 0x$MARK
+    $IPT -t mangle -A $CH1 -p $PROTO -m set --match-set $SET dst -j MARK --set-xmark 0x$MARK
+  done
 
 }
 
