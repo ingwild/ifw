@@ -8,7 +8,7 @@
 # Distributed under the terms of GNU GPLv3
 #
 
-FW="/etc/firewall"
+FW="/etc/ifw"
 INTERFACES="$FW/if"
 PORTS="$FW/ports"
 
@@ -25,10 +25,8 @@ ULOG="$FW/ulog"
 NOULOG="$FW/noulog"
 PEER="$FW/peer"
 
-MPORTS="$FW/mports"
-
 DATE=`date '+%Y%m%d%H%M%S'`
-DUMPFILE="/var/log/iptables.dump"
+DUMPFILE="/var/log/ifw.dump"
 
 # Port listings
 declare -a T=( open pass nopass nowhite peer tarpit )
