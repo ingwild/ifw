@@ -25,10 +25,8 @@ ULOG="$CONFIG/ulog"
 NOULOG="$CONFIG/noulog"
 PEER="$CONFIG/peer"
 
-MPORTS="$CONFIG/mports"
-
 DATE=`date '+%Y%m%d%H%M%S'`
-DUMPFILE="/var/log/iptables.dump"
+DUMPFILE="/var/log/ifw.dump"
 
 # Port listings
 declare -a T=( open pass nopass nowhite peer tarpit )
@@ -110,10 +108,26 @@ port_start() {
 
       $IPS add $SET $PORT
 
+      continue
+
       # Show all declared arrays
       #echo DEBUG: ${!mark_@}
       # Get value from array 
       #let tmp=$(echo $SET[$PORT])
+
+    elif [[ $TYPE =~ (.{1,3}\..{1,3}\..{1,3}\..{1,3}:.{1,5}) ]]; then
+
+      DST=${BASH_REMATCH[1]}
+      if [ $PROTO == tcp ]; then
+        SET=pass_tcp
+        dnat_tcp[$PORT]=$DST
+        pass_tcp[$PORT]=1
+      elif [ $PROTO == udp ]; then
+        SET=pass_udp
+        dnat_udp[$PORT]=$DST
+        pass_udp[$PORT]=1
+      fi
+      unset DST
 
     else
 
@@ -131,15 +145,15 @@ port_start() {
 
       SET=$TYPE"_$PROTO"
 
-      if [ ${TSTATUS[$SET]} == 0 ]; then
-        $IPS create $SET bitmap:port range 0-65535
-        TSTATUS[$SET]=1
-      fi
+    fi
 
-      if [ ${TSTATUS[$SET]} == 1 ]; then
-        $IPS add $SET $PORT
-      fi
+    if [ ${TSTATUS[$SET]} == 0 ]; then
+      $IPS create $SET bitmap:port range 0-65535
+      TSTATUS[$SET]=1
+    fi
 
+    if [ ${TSTATUS[$SET]} == 1 ]; then
+      $IPS add $SET $PORT
     fi
 
     i=$(($i+1))
@@ -623,9 +637,7 @@ firewall_start() {
     $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to internal hosts on chosen ports
-    [ ${TSTATUS[pass_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j LOG --log-prefix "$CH2: "
     [ ${TSTATUS[pass_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j ACCEPT
-    [ ${TSTATUS[pass_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j LOG --log-prefix "$CH2: "
     [ ${TSTATUS[pass_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j ACCEPT
 
     # accept ICMP
@@ -645,33 +657,16 @@ firewall_start() {
   $IPT -A $CH1 -j DENY
 
   # DNAT to internal hosts
-  if [ -r $DNAT ]; then
-
-    # prerouting chain, always exists
-    CH1='PREROUTING'
-
-    # only for external interfaces
-    for IF in ${IF_EXT[@]}; do
-      flag=0
-      for str in `cat $DNAT`; do
-
-        # parse two-column table in config file
-        if [ $flag == 0 ]; then
-          PORT=`expr "$str" : '\(.*\)\/'`
-          PROTO=`expr "$str" : '.*\/\(.*\)'`
-          flag=1
-        else
-          DST=$str
-          if [ -n $PORT ] && [ -n $PROTO ] && [ -n $DST ]; then
-            $IPT -t nat -A $CH1 -i $IF -p $PROTO --dport $PORT -j DNAT --to $DST
-          fi
-          flag=0
-        fi
-
+  CH1='PREROUTING'
+  for IF in ${IF_EXT[@]}; do
+    for A in ${!dnat_@} ; do
+      PROTO=${A:5}
+      for PORT in $(eval echo \${!$A[@]}) ; do
+        eval DST=\${$A[$PORT]}
+        [ -n $DST ] && $IPT -t nat -A $CH1 -i $IF -p $PROTO --dport $PORT -j DNAT --to $DST
       done
     done
-
-  fi
+  done
 
   # nat table
 
