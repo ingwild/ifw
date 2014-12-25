@@ -8,24 +8,24 @@
 # Distributed under the terms of GNU GPLv3
 #
 
-FW="/etc/firewall"
-INTERFACES="$FW/if"
-PORTS="$FW/ports"
+CONFIG="/etc/ifw"
+LINKS="$CONFIG/links"
+PORTS="$CONFIG/ports"
 
-THOSTS="$FW/thosts"
-BLACKMAC="$FW/blackmac"
-BLACKLIST="$FW/blacklist"
-HARDLIST="$FW/hardlist"
-SOFTLIST="$FW/softlist"
-WHITELIST="$FW/whitelist"
-DNAT="$FW/dnat"
-ETHER="$FW/ethers"
-LOG="$FW/log"
-ULOG="$FW/ulog"
-NOULOG="$FW/noulog"
-PEER="$FW/peer"
+THOSTS="$CONFIG/thosts"
+BLACKMAC="$CONFIG/blackmac"
+BLACKLIST="$CONFIG/blacklist"
+HARDLIST="$CONFIG/hardlist"
+SOFTLIST="$CONFIG/softlist"
+WHITELIST="$CONFIG/whitelist"
+DNAT="$CONFIG/dnat"
+ETHER="$CONFIG/ethers"
+LOG="$CONFIG/log"
+ULOG="$CONFIG/ulog"
+NOULOG="$CONFIG/noulog"
+PEER="$CONFIG/peer"
 
-MPORTS="$FW/mports"
+MPORTS="$CONFIG/mports"
 
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/iptables.dump"
@@ -165,7 +165,7 @@ list_start() {
 
   for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEER NOULOG ; do
 
-    LIST="$FW/"${SET,,}
+    LIST="$CONFIG/"${SET,,}
     DUMP="$LIST.dump"
 
     [[ ! -r $LIST ]] && continue
@@ -208,9 +208,9 @@ firewall_start() {
   # filter table
 
   # interfaces
-  if [ -r $INTERFACES ]; then
+  if [ -r $LINKS ]; then
     flag=0
-    for str in `cat $INTERFACES`; do
+    for str in `cat $LINKS`; do
       if [ $flag == 0 ]; then
         IF=$str
         flag=1
@@ -239,10 +239,10 @@ firewall_start() {
       fi
     done
   else
-    errcho "Can not open config file: $INTERFACES"
+    errcho "Can not open config file: $LINKS"
   fi
   if [ ${#IF_EXT[@]} -lt 1 ] && [ ${#IF_INT[@]} -lt 1 ]; then
-    errcho "No external or internal interfaces found. Check $INTERFACES"
+    errcho "No external or internal links found. Check $LINKS"
   fi
 
   # default policy is to drop everything
@@ -551,10 +551,10 @@ firewall_start() {
     $IPT -N $CH2
 
     # pass packets only with valid source IP
-    if [ -r $INTERFACES.$IF ]; then
+    if [ -r $LINKS.$IF ]; then
       CH3=$CH2\_SIP
       $IPT -N $CH3
-      for CIDR in `cat $INTERFACES.$IF`; do
+      for CIDR in `cat $LINKS.$IF`; do
         [[ -n $CIDR ]] && $IPT -A $CH3 -s $CIDR -j RETURN
       done
       [[ $log -ge 1 ]] && $IPT -A $CH3 -j LOG --log-prefix "$CH3: "
