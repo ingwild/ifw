@@ -443,6 +443,7 @@ firewall_start() {
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -459,6 +460,7 @@ firewall_start() {
 
   # separate chain for each external interface
   for IF in ${IF_EXT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -515,6 +517,7 @@ firewall_start() {
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -528,6 +531,7 @@ firewall_start() {
 
   # separate chain for each external interface
   for IF in ${IF_EXT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -561,6 +565,7 @@ firewall_start() {
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -614,6 +619,7 @@ firewall_start() {
 
   # separate chain for each interface
   for IF in ${IF_EXT[@]}; do
+
     CH2=$CH1\_$IF
     $IPT -N $CH2
 
@@ -656,6 +662,8 @@ firewall_start() {
   [[ $log -ge 1 ]] && $IPT -A $CH1 -j LOG --log-prefix "$CH1: "
   $IPT -A $CH1 -j DENY
 
+  # nat table
+
   # DNAT to internal hosts
   CH1='PREROUTING'
   for IF in ${IF_EXT[@]}; do
@@ -668,8 +676,6 @@ firewall_start() {
     done
   done
 
-  # nat table
-
   # postrouting chain, always exists
   CH1='POSTROUTING'
 
@@ -680,7 +686,7 @@ firewall_start() {
 
   # mangle table
 
-  # mangling for outgoing packets
+  # mangle outgoing packets
   CH1='OUTPUT'
 
   for SET in ${!mark_@}; do
@@ -690,7 +696,7 @@ firewall_start() {
     $IPT -t mangle -A $CH1 -p $PROTO -m set --match-set $SET src -j MARK --set-xmark 0x$MARK
   done
 
-  # mangling for forwarded packets
+  # mangle forwarded packets
   CH1='PREROUTING'
   
   for SET in ${!mark_@}; do
