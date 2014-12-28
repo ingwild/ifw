@@ -161,7 +161,9 @@ list_start() {
     LIST="$CONFIG/"${SET,,}
     DUMP="$LIST.dump"
 
-    [[ ! -r $LIST ]] && continue
+    [ ! -r $LIST ] && continue
+
+    S[$SET]=1
 
     if [[ -r $DUMP && $DUMP -nt $LIST && $DEBUG == 0 ]] ; then
 
@@ -267,7 +269,7 @@ firewall_start() {
   $IPT -A $CH1 -j DROP
 
   # Catch connections from these hosts
-  if [ -r $THOSTS ]; then
+  if [ ${S[THOSTS]} ]; then
     CH1='THOSTS'
     $IPT -N $CH1
     SET='THOSTS'
@@ -288,7 +290,7 @@ firewall_start() {
   fi
 
   # IP based blacklist: hosts, not allowed to connect or forward
-  if [ -r $BLACKLIST ]; then
+  if [ ${S[BLACKLIST]} ]; then
     CH1='BLACKLIST'
     $IPT -N $CH1
     SET='BLACKLIST'
@@ -297,7 +299,7 @@ firewall_start() {
   fi
 
   # hardlist: hosts, not allowed to forward
-  if [ -r $HARDLIST ]; then
+  if [ ${S[HARDLIST]} ]; then
     CH1='HARDLIST'
     $IPT -N $CH1
     SET='HARDLIST'
@@ -340,7 +342,7 @@ firewall_start() {
     $IPT -N $CH1
 
     # do not count packets from hosts-exceptions
-    [[ -r $NOULOG ]] && $IPT -A $CH1 -m set --match-set $SET src -j RETURN
+    [ ${S[NOULOG]} ] && $IPT -A $CH1 -m set --match-set $SET src -j RETURN
 
     # count these packets as incoming
     $IPT -A $CH1 -j ULOG --ulog-nlgroup 10 --ulog-cprange 20 --ulog-qthreshold 20
@@ -350,14 +352,14 @@ firewall_start() {
     $IPT -N $CH1
 
     # do not count packets to hosts-exceptions
-    [[ -r $NOULOG ]] && $IPT -A $CH1 -m set --match-set $SET dst -j RETURN
+    [ ${S[NOULOG]} ] && $IPT -A $CH1 -m set --match-set $SET dst -j RETURN
 
     # count these packets as outgoing
     $IPT -A $CH1 -j ULOG --ulog-nlgroup 20 --ulog-cprange 20 --ulog-qthreshold 20
 
   fi
 
-  if [ -r $PEER ]; then
+  if [ ${S[PEER]} ]; then
 
     SET='PEER'
 
@@ -395,7 +397,7 @@ firewall_start() {
   $IPT -A $CH1 -j CHECK
 
   # allow packets from whitelisted hosts except chosen ports, if any
-  if [ -r $WHITELIST ]; then
+  if [ ${S[WHITELIST]} ]; then
     SET='WHITELIST'
     if [ ${S[nowhite_tcp]} ]; then
       $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set nowhite_tcp dst -j DENY
@@ -412,7 +414,7 @@ firewall_start() {
   [ ${S[tarpit_udp]} ] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j TARPIT
 
   # catch connections from theses hosts
-  [[ -r $THOSTS ]] && $IPT -A $CH1 -j THOSTS
+  [ ${S[THOSTS]} ] && $IPT -A $CH1 -j THOSTS
 
   # deny pockects from blacklisted hosts
   [[ -r $BLACKMAC ]] && $IPT -A $CH1 -j BLACKMAC
@@ -457,7 +459,7 @@ firewall_start() {
     $IPT -A $CH2 -p icmp -j ICMP
 
     # filter inbound ports from some peers
-    [[ -r $PEER ]] && $IPT -A $CH2 -j PEER_IN
+    [ ${S[PEER]} ] && $IPT -A $CH2 -j PEER_IN
 
     # deny all the rest on this interface
     [[ $log -ge 1 ]] && $IPT -A $CH2 -j LOG --log-prefix "$CH2: "
@@ -479,7 +481,7 @@ firewall_start() {
   $IPT -A $CH1 -o lo -j ACCEPT
 
   # allow packets to whitelisted hosts except chosen ports, if any
-  if [ -r $WHITELIST ]; then
+  if [ ${S[WHITELIST]} ]; then
     SET='WHITELIST'
     if [[ ${S[nowhite_tcp]} == 1 ]]; then
       $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set nowhite_tcp src -j DENY
@@ -490,7 +492,7 @@ firewall_start() {
   fi
 
   # deny packets to blacklisted hosts
-  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
+  [ ${S[BLACKLIST]} ] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
@@ -516,7 +518,7 @@ firewall_start() {
     [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_OUT
 
     # filter outbound ports to some peers
-    [[ -r $PEER ]] && $IPT -A $CH2 -j PEER_OUT
+    [ ${S[PEER]} ] && $IPT -A $CH2 -j PEER_OUT
 
     # accept all packets to external interfaces
     $IPT -A $CH2 -j ACCEPT
@@ -569,10 +571,10 @@ firewall_start() {
     done
 
     # don't forward packets from hardlisted hosts
-    [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
+    [ ${S[HARDLIST]} ] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets from softlisted hosts on specified ports
-    if [ -r $SOFTLIST ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
+    if [ ${S[SOFTLIST]} ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
       SET='SOFTLIST'
       [ ${S[nopass_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j LOG --log-prefix "SOFTLIST: "
       [ ${S[nopass_tcp]} ] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j DENY
@@ -604,10 +606,10 @@ firewall_start() {
     [[ -r $ULOG ]] && $IPT -A $CH2 -j ULOG_IN
 
     # don't forward packets to hardlisted hosts
-    [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
+    [ ${S[HARDLIST]} ] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets to softlisted hosts on specified ports
-    if [ -r $SOFTLIST ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
+    if [ ${S[SOFTLIST]} ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
       SET='SOFTLIST'
       [ ${S[nopass_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j LOG --log-prefix "SOFTLIST: "
       [ ${S[nopass_tcp]} ] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j DENY
