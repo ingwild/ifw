@@ -30,7 +30,7 @@ DUMPFILE="/var/log/ifw.dump"
 
 # Port listings
 declare -a T=( open pass nopass nowhite peer tarpit )
-declare -A TSTATUS
+declare -A S
 
 errcho() {
   echo "$@" 1>&2
@@ -58,11 +58,6 @@ port_start() {
   if [ ! -r $PORTS ]; then
     errcho "Config file is not readable! ($PORTS)"
   fi
-
-  for PTYPE in ${T[@]}; do
-    TSTATUS[$PTYPE"_tcp"]=0
-    TSTATUS[$PTYPE"_udp"]=0
-  done
 
   i=1
 
@@ -95,13 +90,13 @@ port_start() {
       SET=mark_$PROTO\_$NUM
 
       DECLARED=0
-      for S in ${!mark_@}; do
-        [ $S == $SET ] && DECLARED=1
+      for D in ${!mark_@}; do
+        [ $D == $SET ] && DECLARED=1
       done
 
       if [ $DECLARED == 0 ]; then
-        #declare -A $SET
         $IPS create $SET bitmap:port range 0-65535
+        S[$SET]=1
       fi
 
       let $(echo $SET[$PORT]=1)
@@ -109,11 +104,6 @@ port_start() {
       $IPS add $SET $PORT
 
       continue
-
-      # Show all declared arrays
-      #echo DEBUG: ${!mark_@}
-      # Get value from array 
-      #let tmp=$(echo $SET[$PORT])
 
     elif [[ $TYPE =~ (.{1,3}\..{1,3}\..{1,3}\..{1,3}:.{1,5}) ]]; then
 
@@ -147,12 +137,12 @@ port_start() {
 
     fi
 
-    if [ ${TSTATUS[$SET]} == 0 ]; then
+    if [ ! ${S[$SET]} ]; then
       $IPS create $SET bitmap:port range 0-65535
-      TSTATUS[$SET]=1
+      S[$SET]=1
     fi
 
-    if [ ${TSTATUS[$SET]} == 1 ]; then
+    if [ ${S[$SET]} == 1 ]; then
       $IPS add $SET $PORT
     fi
 
@@ -161,17 +151,6 @@ port_start() {
   done
 
   unset IFS
-
-}
-
-port_stop() {
-
-  for PTYPE in ${T[@]}; do
-    if [ "${TSTATUS[$PTYPE]}" == 1 ]; then
-      SET="ports_"$PTYPE
-      $IPS destroy $SET
-    fi
-  done
 
 }
 
@@ -184,7 +163,7 @@ list_start() {
 
     [[ ! -r $LIST ]] && continue
 
-    if [[ -r $DUMP ]] && [[ $DUMP -nt $LIST ]] && [[ $DEBUG == 0 ]] ; then
+    if [[ -r $DUMP && $DUMP -nt $LIST && $DEBUG == 0 ]] ; then
 
       # It's much quicker to restore from dump
       # if it's readable and newer than list
@@ -209,10 +188,8 @@ list_start() {
 
 }
 
+set_stop() {
 
-list_stop() {
-
-  # remove all ipsets
   $IPS destroy
 
 }
@@ -388,23 +365,23 @@ firewall_start() {
 
     CH1='PEER_IN'
     $IPT -N $CH1
-    [ ${TSTATUS[peer_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set peer_tcp dst -j LOG --log-prefix "$CH1: "
-    [ ${TSTATUS[peer_tcp]} == 1 ] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set peer_tcp dst -j DENY
-    [ ${TSTATUS[peer_tcp]} == 1 ] && $IPT -A $CH1 -p tcp -m set --match-set peer_tcp dst -j ACCEPT
-    [ ${TSTATUS[peer_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m set --match-set peer_udp dst -j LOG --log-prefix "$CH1: "
-    [ ${TSTATUS[peer_udp]} == 1 ] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m set --match-set peer_udp dst -j DENY
-    [ ${TSTATUS[peer_udp]} == 1 ] && $IPT -A $CH1 -p udp -m set --match-set peer_udp dst -j ACCEPT
+    [ ${S[peer_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set peer_tcp dst -j LOG --log-prefix "$CH1: "
+    [ ${S[peer_tcp]} ] && $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set peer_tcp dst -j DENY
+    [ ${S[peer_tcp]} ] && $IPT -A $CH1 -p tcp -m set --match-set peer_tcp dst -j ACCEPT
+    [ ${S[peer_udp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m set --match-set peer_udp dst -j LOG --log-prefix "$CH1: "
+    [ ${S[peer_udp]} ] && $IPT -A $CH1 -m set --match-set $SET src -p udp -m set --match-set peer_udp dst -j DENY
+    [ ${S[peer_udp]} ] && $IPT -A $CH1 -p udp -m set --match-set peer_udp dst -j ACCEPT
 
     # deny outbound ports to some peers
 
     CH1='PEER_OUT'
     $IPT -N $CH1
-    [ ${TSTATUS[peer_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set peer_tcp src -j LOG --log-prefix "$CH1: "
-    [ ${TSTATUS[peer_tcp]} == 1 ] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set peer_tcp src -j DENY
-    [ ${TSTATUS[peer_tcp]} == 1 ] && $IPT -A $CH1 -p tcp -m set --match-set peer_tcp src -j ACCEPT
-    [ ${TSTATUS[peer_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m set --match-set peer_udp src -j LOG --log-prefix "$CH1: "
-    [ ${TSTATUS[peer_udp]} == 1 ] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m set --match-set peer_udp src -j DENY
-    [ ${TSTATUS[peer_udp]} == 1 ] && $IPT -A $CH1 -p udp -m set --match-set peer_udp src -j ACCEPT
+    [ ${S[peer_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set peer_tcp src -j LOG --log-prefix "$CH1: "
+    [ ${S[peer_tcp]} ] && $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set peer_tcp src -j DENY
+    [ ${S[peer_tcp]} ] && $IPT -A $CH1 -p tcp -m set --match-set peer_tcp src -j ACCEPT
+    [ ${S[peer_udp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m set --match-set peer_udp src -j LOG --log-prefix "$CH1: "
+    [ ${S[peer_udp]} ] && $IPT -A $CH1 -m set --match-set $SET dst -p udp -m set --match-set peer_udp src -j DENY
+    [ ${S[peer_udp]} ] && $IPT -A $CH1 -p udp -m set --match-set peer_udp src -j ACCEPT
 
   fi
 
@@ -420,19 +397,19 @@ firewall_start() {
   # allow packets from whitelisted hosts except chosen ports, if any
   if [ -r $WHITELIST ]; then
     SET='WHITELIST'
-    if [ ${TSTATUS[nowhite_tcp]} == 1 ]; then
+    if [ ${S[nowhite_tcp]} ]; then
       $IPT -A $CH1 -m set --match-set $SET src -p tcp -m set --match-set nowhite_tcp dst -j DENY
-    elif [ ${TSTATUS[nowhite_udp]} == 1 ]; then
+    elif [ ${S[nowhite_udp]} ]; then
       $IPT -A $CH1 -m set --match-set $SET src -p udp -m set --match-set nowhite_udp dst -j DENY
     fi
     $IPT -A $CH1 -m set --match-set $SET src -j ACCEPT
   fi
 
   # catch connections to theses ports
-  [ ${TSTATUS[tarpit_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j LOG --log-prefix "TARPIT: "
-  [ ${TSTATUS[tarpit_tcp]} == 1 ] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j TARPIT
-  [ ${TSTATUS[tarpit_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j LOG --log-prefix "TARPIT: "
-  [ ${TSTATUS[tarpit_udp]} == 1 ] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j TARPIT
+  [ ${S[tarpit_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j LOG --log-prefix "TARPIT: "
+  [ ${S[tarpit_tcp]} ] && $IPT -A $CH1 -p tcp -m set --match-set tarpit_tcp dst -j TARPIT
+  [ ${S[tarpit_udp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j LOG --log-prefix "TARPIT: "
+  [ ${S[tarpit_udp]} ] && $IPT -A $CH1 -p udp -m set --match-set tarpit_udp dst -j TARPIT
 
   # catch connections from theses hosts
   [[ -r $THOSTS ]] && $IPT -A $CH1 -j THOSTS
@@ -473,8 +450,8 @@ firewall_start() {
 
     # accept packets to open ports on this host
 
-    [ ${TSTATUS[open_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set open_tcp dst -j ACCEPT
-    [ ${TSTATUS[open_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set open_udp dst -j ACCEPT
+    [ ${S[open_tcp]} ] && $IPT -A $CH2 -p tcp -m set --match-set open_tcp dst -j ACCEPT
+    [ ${S[open_udp]} ] && $IPT -A $CH2 -p udp -m set --match-set open_udp dst -j ACCEPT
 
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
@@ -504,9 +481,9 @@ firewall_start() {
   # allow packets to whitelisted hosts except chosen ports, if any
   if [ -r $WHITELIST ]; then
     SET='WHITELIST'
-    if [ ${TSTATUS[nowhite_tcp]} == 1 ]; then
+    if [[ ${S[nowhite_tcp]} == 1 ]]; then
       $IPT -A $CH1 -m set --match-set $SET dst -p tcp -m set --match-set nowhite_tcp src -j DENY
-    elif [ ${TSTATUS[nowhite_udp]} == 1 ]; then
+    elif [[ ${S[nowhite_udp]} == 1 ]]; then
       $IPT -A $CH1 -m set --match-set $SET dst -p udp -m set --match-set nowhite_udp src -j DENY
     fi
     $IPT -A $CH1 -m set --match-set $SET dst -j ACCEPT
@@ -595,12 +572,12 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets from softlisted hosts on specified ports
-    if [ -r $SOFTLIST ] && [ ${TSTATUS[nopass_tcp]} == 1 -o ${TSTATUS[nopass_udp]} == 1 ]; then
+    if [ -r $SOFTLIST ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
       SET='SOFTLIST'
-      [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j LOG --log-prefix "SOFTLIST: "
-      [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j DENY
-      [ ${TSTATUS[nopass_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j LOG --log-prefix "SOFTLIST: "
-      [ ${TSTATUS[nopass_udp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j DENY
+      [ ${S[nopass_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j LOG --log-prefix "SOFTLIST: "
+      [ ${S[nopass_tcp]} ] && $IPT -A $CH2 -m set --match-set $SET src -p tcp -m set --match-set nopass_tcp dst -j DENY
+      [ ${S[nopass_udp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j LOG --log-prefix "SOFTLIST: "
+      [ ${S[nopass_udp]} ] && $IPT -A $CH2 -m set --match-set $SET src -p udp -m set --match-set nopass_udp dst -j DENY
     fi
 
     # deny packets from unknown MAC+IP pairs
@@ -630,12 +607,12 @@ firewall_start() {
     [[ -r $HARDLIST ]] && $IPT -A $CH2 -j HARDLIST
 
     # don't forward packets to softlisted hosts on specified ports
-    if [ -r $SOFTLIST ] && [ ${TSTATUS[nopass_tcp]} == 1 -o ${TSTATUS[nopass_udp]} == 1 ]; then
+    if [ -r $SOFTLIST ] && [ ${S[nopass_tcp]} -o ${S[nopass_udp]} ]; then
       SET='SOFTLIST'
-      [ ${TSTATUS[nopass_tcp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j LOG --log-prefix "SOFTLIST: "
-      [ ${TSTATUS[nopass_tcp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j DENY
-      [ ${TSTATUS[nopass_udp]} == 1 ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j LOG --log-prefix "SOFTLIST: "
-      [ ${TSTATUS[nopass_udp]} == 1 ] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j DENY
+      [ ${S[nopass_tcp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j LOG --log-prefix "SOFTLIST: "
+      [ ${S[nopass_tcp]} ] && $IPT -A $CH2 -m set --match-set $SET dst -p tcp -m set --match-set nopass_tcp src -j DENY
+      [ ${S[nopass_udp]} ] && [[ $log -ge 1 ]] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j LOG --log-prefix "SOFTLIST: "
+      [ ${S[nopass_udp]} ] && $IPT -A $CH2 -m set --match-set $SET dst -p udp -m set --match-set nopass_udp src -j DENY
     fi
 
     # accept established connections
@@ -643,8 +620,8 @@ firewall_start() {
     $IPT -A $CH2 -p udp -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # accept packets to internal hosts on chosen ports
-    [ ${TSTATUS[pass_tcp]} == 1 ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j ACCEPT
-    [ ${TSTATUS[pass_udp]} == 1 ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j ACCEPT
+    [ ${S[pass_tcp]} ] && $IPT -A $CH2 -p tcp -m set --match-set pass_tcp dst -j ACCEPT
+    [ ${S[pass_udp]} ] && $IPT -A $CH2 -p udp -m set --match-set pass_udp dst -j ACCEPT
 
     # accept ICMP
     $IPT -A $CH2 -p icmp -j ICMP
@@ -743,14 +720,12 @@ case "$1" in
 
   stop)
     firewall_stop
-    port_stop
-    list_stop
+    set_stop
     ;;
 
   restart)
     firewall_stop
-    port_stop
-    list_stop
+    set_stop
     list_start
     port_start
     firewall_start
