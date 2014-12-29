@@ -8,27 +8,29 @@
 # Distributed under the terms of GNU GPLv3
 #
 
+# Required
 CONFIG="/etc/ifw"
 LINKS="$CONFIG/links"
 PORTS="$CONFIG/ports"
 
-THOSTS="$CONFIG/thosts"
-BLACKMAC="$CONFIG/blackmac"
-BLACKLIST="$CONFIG/blacklist"
-HARDLIST="$CONFIG/hardlist"
-SOFTLIST="$CONFIG/softlist"
-WHITELIST="$CONFIG/whitelist"
-DNAT="$CONFIG/dnat"
-ETHER="$CONFIG/ethers"
-LOG="$CONFIG/log"
-ULOG="$CONFIG/ulog"
-NOULOG="$CONFIG/noulog"
-PEER="$CONFIG/peer"
-
+# Dump
 DATE=`date '+%Y%m%d%H%M%S'`
 DUMPFILE="/var/log/ifw.dump"
 
-# Port listings
+# Syslog
+LOG="$CONFIG/log"
+
+# Ulogd
+ULOG="$CONFIG/ulog"
+
+# MAC based lists
+BLACKMAC="$CONFIG/blackmac"
+ETHER="$CONFIG/ethers"
+
+# Net/IP based lists
+declare -a L=( whitelist blacklist hardlist softlist thosts peer noulog )
+
+# Port lists
 declare -a T=( open pass nopass nowhite peer tarpit )
 declare -A S
 
@@ -156,10 +158,11 @@ port_start() {
 
 list_start() {
 
-  for SET in WHITELIST BLACKLIST HARDLIST SOFTLIST THOSTS PEER NOULOG ; do
+  for SET in ${L[@]}; do
 
-    LIST="$CONFIG/"${SET,,}
+    LIST="$CONFIG/$SET"
     DUMP="$LIST.dump"
+    SET=${SET^^}
 
     [ ! -r $LIST ] && continue
 
@@ -418,7 +421,7 @@ firewall_start() {
 
   # deny pockects from blacklisted hosts
   [[ -r $BLACKMAC ]] && $IPT -A $CH1 -j BLACKMAC
-  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
+  [ ${S[BLACKLIST]} ] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
@@ -540,7 +543,7 @@ firewall_start() {
 
   # deny packets from blacklisted hosts
   [[ -r $BLACKMAC ]] && $IPT -A $CH1 -j BLACKMAC
-  [[ -r $BLACKLIST ]] && $IPT -A $CH1 -j BLACKLIST
+  [ ${S[BLACKLIST]} ] && $IPT -A $CH1 -j BLACKLIST
 
   # separate chain for each internal interface
   for IF in ${IF_INT[@]}; do
