@@ -1,12 +1,23 @@
 #!/bin/bash
-#
-# ing's firewall
+
+# ing's firewall (ifw)
 # Linux/Netfilter firewall script
 #
-# (c) 2003-2014 by ing at wild dot in dot ua
+# (c) 2003-2015 by ing at wild dot in dot ua
 #
 # Distributed under the terms of GNU GPLv3
-#
+
+### BEGIN INIT INFO
+# Provides:          ifw
+# Required-Start:
+# Required-Stop:
+# Should-Start:      $network $syslog
+# Should-Stop:       $network $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start and stop ifw
+# Description:       ifw is an iptables based firewall script
+### END INIT INFO
 
 # Required
 CONFIG="/etc/ifw"
